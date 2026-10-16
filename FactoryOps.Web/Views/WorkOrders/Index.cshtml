@@ -1,27 +1,139 @@
 @model List<FactoryOps.Web.Models.WorkOrder>
-@{
-    ViewData["Title"]="Work Orders";
 
+@{
+    ViewData["Title"] = "Production Orders";
+
+    int active = Model.Count(x => x.Status == "In Progress");
+    int completed = Model.Count(x => x.Status == "Completed");
+    int pending = Model.Count(x => x.Status == "Pending");
 }
 
-<h1>Work Orders</h1>
+<h1>FactoryOps</h1>
+<p class="text-muted">
+    Manufacturing Operations Dashboard — Demo Data
+</p>
 
-<table class ="table">
-    <thread>
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card p-3">
+            <h6>Total Orders</h6>
+            <h2>@Model.Count</h2>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card p-3">
+            <h6>In Progress</h6>
+            <h2>@active</h2>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card p-3">
+            <h6>Completed</h6>
+            <h2>@completed</h2>
+        </div>
+    </div>
+</div>
+
+<h3>Production Orders</h3>
+
+<table class="table table-striped">
+    <thead>
         <tr>
-            <th>ID</th>
-            <th>Title</th>
+            <th>Order ID</th>
+            <th>Product</th>
+            <th>Quantity</th>
+            <th>Due Date</th>
             <th>Status</th>
-        </th>
-    </thread>
+            <th>Action</th>
+        </tr>
+    </thead>
+
     <tbody>
         @foreach (var order in Model)
         {
             <tr>
-                <td>@order.Id</td>
-                <td>@order.Title</td>
+                <td>WO-@order.Id</td>
+                <td>@order.ProductType</td>
+                <td>@order.Quantity</td>
+                <td>@order.DueDate.ToString("yyyy-MM-dd")</td>
                 <td>@order.Status</td>
+                <td>
+                    <form asp-controller="WorkOrders"
+                          asp-action="UpdateStatus"
+                          method="post">
+                        @Html.AntiForgeryToken()
+
+                        <input type="hidden"
+                               name="id"
+                               value="@order.Id" />
+
+                        <select name="status"
+                                class="form-select form-select-sm">
+                            @foreach (var status in new[]
+                            {
+                                "Pending",
+                                "In Progress",
+                                "Completed"
+                            })
+                            {
+                                <option value="@status"
+                                        selected="@(order.Status == status)">
+                                    @status
+                                </option>
+                            }
+                        </select>
+
+                        <button type="submit"
+                                class="btn btn-sm btn-primary mt-1">
+                            Update
+                        </button>
+                    </form>
+                </td>
             </tr>
         }
     </tbody>
 </table>
+
+<hr />
+
+<h3>Create Production Order</h3>
+
+<form asp-controller="WorkOrders"
+      asp-action="Create"
+      method="post">
+
+    @Html.AntiForgeryToken()
+
+    <div class="mb-3">
+        <label class="form-label">Product</label>
+        <select name="productType" class="form-select">
+            <option value="Fast Tread">Fast Tread</option>
+            <option value="BlueDeck">BlueDeck</option>
+            <option value="SureFit">SureFit</option>
+        </select>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Quantity</label>
+        <input type="number"
+               name="quantity"
+               min="1"
+               required
+               class="form-control" />
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Due Date</label>
+        <input type="date"
+               name="dueDate"
+               min="@DateTime.Today.ToString("yyyy-MM-dd")"
+               required
+               class="form-control" />
+    </div>
+
+    <button type="submit" class="btn btn-success">
+        Create Order
+    </button>
+</form>
