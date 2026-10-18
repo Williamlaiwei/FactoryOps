@@ -8,7 +8,7 @@ const { chromium } = require("../artifacts/browser-tools/node_modules/playwright
     try {
         const base = process.env.FACTORYOPS_TEST_BASE_URL;
         assert.ok(base, "Run through tests/order_editing.py --knowledge --browser");
-        const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
+        const page = await browser.newPage({ locale: "zh-TW", viewport: { width: 1440, height: 1100 } });
         const errors = [];
         page.on("pageerror", error => errors.push(error.message));
         async function selectCompany(name) {
@@ -31,7 +31,18 @@ const { chromium } = require("../artifacts/browser-tools/node_modules/playwright
         await page.goto(base + "/Knowledge");
         const raw = fs.readFileSync(path.join(__dirname, "../demo/fti-group/knowledge.csv"));
         const file = { name: "fti-demo-reference.csv", mimeType: "text/csv", buffer: raw };
-        await page.locator("#knowledgeFile").setInputFiles(file);
+        const picker = page.locator(".english-file-picker").filter({ has: page.locator("#knowledgeFile") });
+        assert.equal(await picker.locator(".file-picker-button").innerText(), "Choose File");
+        assert.equal(await picker.locator(".file-picker-name").innerText(), "No file chosen");
+        assert.equal(await page.locator("#knowledgeFile").evaluate(input => getComputedStyle(input).opacity), "0");
+        await page.getByRole("button", { name: "Upload and Index", exact: true }).click();
+        assert.equal(await page.locator("#knowledgeFile").evaluate(input => input.validationMessage), "Choose a file before uploading.");
+        const chooserPromise = page.waitForEvent("filechooser");
+        await page.locator("#knowledgeFile").click();
+        await (await chooserPromise).setFiles(file);
+        assert.equal(await picker.locator(".file-picker-name").innerText(), file.name);
+        assert.equal(await page.locator("#knowledgeFile").evaluate(input => input.validationMessage), "");
+        await page.screenshot({ path: path.join(__dirname, "../artifacts/english-file-upload.png"), fullPage: true });
         await page.locator("#sourceUrl").fill("https://ftigroup.com.au/products/");
         await page.getByRole("button", { name: "Upload and Index", exact: true }).click();
         const doc = page.locator(".knowledge-document");
@@ -73,6 +84,8 @@ const { chromium } = require("../artifacts/browser-tools/node_modules/playwright
         await doc.getByRole("button", { name: "Re-index", exact: true }).click();
         await page.locator(`.knowledge-document[data-version="2"]`).waitFor();
         await doc.getByRole("button", { name: "Replace Document", exact: true }).click();
+        assert.equal(await doc.locator(".file-picker-button").innerText(), "Choose File");
+        assert.equal(await doc.locator(".file-picker-name").innerText(), "No file chosen");
         await doc.locator('input[type="file"]').setInputFiles({
             name: "updated-reference.csv", mimeType: "text/csv", buffer: Buffer.from("Sku,Name\nDEMO-BD-PT330,BlueDeck PT330 decking\n")
         });
@@ -87,7 +100,28 @@ const { chromium } = require("../artifacts/browser-tools/node_modules/playwright
         await doc.getByRole("button", { name: "Delete", exact: true }).click();
         await page.getByText("Document, stored original and index entries deleted.", { exact: true }).waitFor();
         assert.equal(await doc.count(), 0);
+
+        await page.goto(base + "/Companies/Create");
+        await page.getByLabel("Company name", { exact: true }).fill("New Knowledge Company");
+        await page.getByRole("button", { name: "Create Company", exact: true }).click();
+        await page.getByRole("status").waitFor();
+        await page.goto(base + "/Knowledge?q=BlueDeck%200.75");
+        assert.equal(await doc.count(), 0);
+        assert.equal(await page.locator(".knowledge-candidate").count(), 0);
+        assert.equal(await page.locator(".knowledge-citation").count(), 0);
+        assert.equal(await page.locator('[role="alert"]').count(), 0);
+        await page.locator("#knowledgeFile").setInputFiles({ name: "new-company.csv", mimeType: "text/csv", buffer: raw });
+        await page.getByRole("button", { name: "Upload and Index", exact: true }).click();
+        await doc.waitFor();
+        const newDocumentId = await doc.getAttribute("data-document-id");
+        await selectCompany("FTI Group Demo");
+        await page.goto(base + "/Knowledge");
+        assert.equal(await doc.count(), 0);
+        assert.equal((await page.request.get(base + `/Knowledge/Original/${newDocumentId}`)).status(), 404);
+        await selectCompany("New Knowledge Company");
+        await page.goto(base + "/Knowledge");
+        assert.equal(await doc.count(), 1);
         assert.deepEqual(errors, []);
-        console.log("PASS: Edge company switching, upload/dedup, citations, SQL candidates, cross-company isolation, reindex, replace and delete.");
+        console.log("PASS: Edge company switching, upload/dedup, citations, SQL candidates, cross-company isolation, reindex, replace, delete and a newly created company knowledge library.");
     } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

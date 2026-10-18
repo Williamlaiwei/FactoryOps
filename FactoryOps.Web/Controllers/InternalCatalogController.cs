@@ -18,7 +18,9 @@ public class InternalCatalogController(FactoryOpsDbContext db, CompanyContext co
             companyKey = company.Key,
             products = products.Select(x => new
             {
-                x.Id, x.Sku, x.Name, x.UnitOfMeasure, x.IsDemo,
+                x.Id, x.Sku, x.Name, x.UnitOfMeasure, x.IsDemo, x.Dimensions, x.PackingSize, x.RoughIn,
+                x.HeatingMethod, x.FlushingMethod, x.CeramicBody, x.Color, x.DisplayMode, x.NetWeight, x.GrossWeight,
+                x.Category, x.Description, x.Specifications, x.Packaging,
                 skuIsVerified = x.SkuIsVerified && !x.Sku.StartsWith("LEGACY-"),
                 x.SourceUrl, aliases = x.Aliases.Select(a => a.Value).ToList()
             })

@@ -69,6 +69,16 @@ public class KnowledgeCandidate
     public string Sku { get; set; } = "";
     public string Name { get; set; } = "";
     public string UnitOfMeasure { get; set; } = "";
+    public string Dimensions { get; set; } = "";
+    public string PackingSize { get; set; } = "";
+    public string RoughIn { get; set; } = "";
+    public string HeatingMethod { get; set; } = "";
+    public string FlushingMethod { get; set; } = "";
+    public string CeramicBody { get; set; } = "";
+    public string Color { get; set; } = "";
+    public string DisplayMode { get; set; } = "";
+    public string NetWeight { get; set; } = "";
+    public string GrossWeight { get; set; } = "";
     public bool IsDemo { get; set; }
     public bool SkuIsVerified { get; set; }
     public string SourceUrl { get; set; } = "";

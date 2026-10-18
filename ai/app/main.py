@@ -237,12 +237,22 @@ def catalog_candidates(query, products, citations):
                  [product["name"].casefold()] + [alias.casefold() for alias in product["aliases"]]]
     if not exact:
         method = "candidate_only"
-        tokens = set(re.findall(r"[a-z0-9]+(?:\.[0-9]+)?", normalized)) - {"the", "a", "for", "please", "need", "supply", "of", "mm"}
+        def tokenize(value):
+            return set(re.findall(r"\d+(?:\.\d+)?|[a-z]+", value.casefold()))
+
+        tokens = tokenize(normalized) - {"the", "a", "for", "please", "need", "supply", "of", "mm"}
         numbers = {token for token in tokens if re.fullmatch(r"\d+(?:\.\d+)?", token)}
         ranked = []
         for product in products:
-            text = " ".join([product["sku"], product["name"], *product["aliases"]]).casefold()
-            p_tokens = set(re.findall(r"[a-z0-9]+(?:\.[0-9]+)?", text))
+            text = " ".join(str(value or "") for value in [
+                product["sku"], product["name"], *product["aliases"], product.get("category", ""),
+                product.get("dimensions", ""), product.get("packingSize", ""), product.get("roughIn", ""),
+                product.get("heatingMethod", ""), product.get("flushingMethod", ""),
+                product.get("ceramicBody", ""), product.get("color", ""), product.get("displayMode", ""),
+                product.get("netWeight", ""), product.get("grossWeight", ""),
+                product.get("description", ""), product.get("specifications", ""), product.get("packaging", "")
+            ])
+            p_tokens = tokenize(text)
             overlap = len(tokens & p_tokens)
             if overlap and numbers.issubset(p_tokens) and overlap / max(len(tokens), 1) >= 0.5:
                 ranked.append((overlap, product))

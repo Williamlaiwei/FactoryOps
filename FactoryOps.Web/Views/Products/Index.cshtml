@@ -15,20 +15,22 @@
     }
     <div class="card"><div class="card-body">
         <form method="get" class="row g-3 mb-4">
-            <div class="col-md-7"><label asp-for="Q" class="form-label">Search SKU, name, category or alias</label><input asp-for="Q" name="q" type="search" class="form-control" placeholder="Product code or abbreviation..." /></div>
+            <div class="col-md-7"><label asp-for="Q" class="form-label">Search SKU, name, specifications or alias</label><input asp-for="Q" name="q" type="search" class="form-control" placeholder="Product code, color, size or abbreviation..." /></div>
             <div class="col-md-3"><label asp-for="Status" class="form-label">Status</label><select asp-for="Status" name="status" class="form-select"><option value="all">All products</option><option value="active">Active</option><option value="inactive">Inactive</option></select></div>
             <div class="col-md-2 d-flex align-items-end"><button class="btn btn-outline-primary w-100" type="submit">Search</button></div>
         </form>
         <p class="text-muted">@Model.Products.Count product(s). Inactive products remain on historical orders.</p>
         <div class="table-responsive"><table class="table table-hover align-middle">
-            <thead><tr><th>SKU / Product</th><th>Category</th><th>Unit</th><th>Aliases</th><th>Status</th><th>Actions</th></tr></thead>
+            <thead><tr><th>SKU / Product</th><th>Category</th><th>Product Information</th><th>Unit</th><th>Aliases</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
                 @foreach (var product in Model.Products)
                 {
                     <tr data-product-id="@product.Id">
                         <td><div class="fw-semibold">@product.Sku</div><div>@product.Name</div></td>
                         @* Demo codes are app identifiers, not verified manufacturer codes. *@
-                        <td>@product.Category @if (product.IsDemo) { <span class="badge bg-warning text-dark">Demo</span> }</td><td>@product.UnitOfMeasure</td><td>@string.Join(", ", product.Aliases.OrderBy(x => x.Value).Select(x => x.Value))</td>
+                        <td>@product.Category @if (product.IsDemo) { <span class="badge bg-warning text-dark">Demo</span> }</td>
+                        <td class="small">@if (!string.IsNullOrWhiteSpace(product.Dimensions)) { <div>Size: @product.Dimensions</div> } @if (!string.IsNullOrWhiteSpace(product.PackingSize)) { <div>Packing: @product.PackingSize</div> } @if (!string.IsNullOrWhiteSpace(product.RoughIn)) { <div>Rough-in: @product.RoughIn</div> } @if (!string.IsNullOrWhiteSpace(product.Color)) { <div>Color: @product.Color</div> } @if (!string.IsNullOrWhiteSpace(product.CeramicBody)) { <div>Body: @product.CeramicBody</div> } @if (!string.IsNullOrWhiteSpace(product.NetWeight) || !string.IsNullOrWhiteSpace(product.GrossWeight)) { <div>Weight: @product.NetWeight net / @product.GrossWeight gross</div> }</td>
+                        <td>@product.UnitOfMeasure</td><td>@string.Join(", ", product.Aliases.OrderBy(x => x.Value).Select(x => x.Value))</td>
                         <td><span class="badge @(product.IsActive ? "bg-success" : "bg-secondary")">@(product.IsActive ? "Active" : "Inactive")</span></td>
                         <td class="text-nowrap"><a asp-action="Edit" asp-route-id="@product.Id" class="btn btn-sm btn-outline-primary">Edit</a> <a asp-action="Delete" asp-route-id="@product.Id" class="btn btn-sm btn-outline-danger">Delete</a></td>
                     </tr>

@@ -5,8 +5,13 @@
     <div class="card"><div class="card-body">
         <p>Upload up to 1,000 new products in a UTF-8 CSV file (maximum 5 MB). All rows must be valid before anything is saved. Existing SKUs are rejected and are never overwritten.</p>
         <p>Required columns: <strong>Sku, Name, UnitOfMeasure</strong>.</p>
-        <p>Optional columns: Description, Category, Dimensions, Specifications, Packaging, IsActive, Aliases. Use <code>true</code> or <code>false</code> for IsActive (blank defaults to true). Separate aliases with <code>|</code>.</p>
-        <a asp-action="CsvTemplate" class="btn btn-outline-primary mb-4">Download CSV Template</a>
+        <p>Optional columns: Description, Category, Dimensions, PackingSize, RoughIn, HeatingMethod, FlushingMethod, CeramicBody, Color, DisplayMode, NetWeight, GrossWeight, Specifications, Packaging, IsActive, Aliases. Use <code>true</code> or <code>false</code> for IsActive (blank defaults to true). Separate aliases with <code>|</code>.</p>
+        <a asp-action="CsvTemplate" class="btn btn-outline-primary mb-3">Download Product CSV Example</a>
+        <p class="small text-muted">Replace the fictional sample row before importing. The example SKU <code>04412</code> includes a leading zero: in Excel, treat Sku as text and export as CSV UTF-8. Keep the column headings unchanged. This file belongs in the product catalog, not the customer or AI Knowledge upload.</p>
+        <details class="mb-4">
+            <summary>View Product CSV Example</summary>
+            <pre class="bg-light border rounded p-3 mt-2 mb-0">@FactoryOps.Web.Services.CsvImportExamples.Products</pre>
+        </details>
         <form asp-action="Import" method="post" enctype="multipart/form-data">
             <div asp-validation-summary="All" class="text-danger" role="alert"></div>
             <label asp-for="File" class="form-label">Product CSV</label><input asp-for="File" type="file" accept=".csv,text/csv" class="form-control" required />

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using FactoryOps.Web.Data;
 using FactoryOps.Web.Models;
+using FactoryOps.Web.Services;
 using CsvHelper;
 using CsvHelper.Configuration;
 using System.Globalization;
@@ -28,6 +29,11 @@ public class CustomersController : Controller
 
         return View(customers);
     }
+
+    [HttpGet]
+    public IActionResult CsvTemplate() => File(CsvImportExamples.Download(CsvImportExamples.Customers),
+        "text/csv; charset=utf-8", "customers-sites-example.csv");
+
     // POST /Customers/Create
     [HttpPost]
     [ValidateAntiForgeryToken]

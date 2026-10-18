@@ -54,7 +54,12 @@
 
             <hr /><h5>3. Order Details</h5>
             <label for="productFilter" class="form-label">Find catalog products</label>
-            <input id="productFilter" type="search" class="form-control" placeholder="Filter product choices by SKU, name or alias..." />
+            <div class="input-group">
+                <input id="productFilter" type="search" class="form-control" placeholder="Search SKU, name or alias, including numbers..."
+                       aria-describedby="productFilterMessage" />
+                <button id="clearProductFilterButton" type="button" class="btn btn-outline-secondary d-none">Clear Search</button>
+            </div>
+            <div id="productFilterMessage" class="form-text d-none" role="status" aria-live="polite"></div>
             @if (!Model.AvailableProducts.Any(x => x.IsActive))
             {
                 <p class="text-warning mt-2">No active products are available. <a asp-controller="Products" asp-action="Create">Add a product</a> before adding order lines.</p>

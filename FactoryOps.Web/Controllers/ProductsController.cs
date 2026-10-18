@@ -24,6 +24,13 @@ public class ProductsController(FactoryOpsDbContext db, ProductCatalog catalog, 
             var pattern = $"%{q.Trim().Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_")}%";
             query = query.Where(x => EF.Functions.ILike(x.Sku, pattern, "\\") ||
                 EF.Functions.ILike(x.Name, pattern, "\\") || EF.Functions.ILike(x.Category, pattern, "\\") ||
+                EF.Functions.ILike(x.Dimensions, pattern, "\\") || EF.Functions.ILike(x.PackingSize, pattern, "\\") ||
+                EF.Functions.ILike(x.RoughIn, pattern, "\\") || EF.Functions.ILike(x.HeatingMethod, pattern, "\\") ||
+                EF.Functions.ILike(x.FlushingMethod, pattern, "\\") || EF.Functions.ILike(x.CeramicBody, pattern, "\\") ||
+                EF.Functions.ILike(x.Color, pattern, "\\") || EF.Functions.ILike(x.DisplayMode, pattern, "\\") ||
+                EF.Functions.ILike(x.NetWeight, pattern, "\\") || EF.Functions.ILike(x.GrossWeight, pattern, "\\") ||
+                EF.Functions.ILike(x.Description, pattern, "\\") || EF.Functions.ILike(x.Specifications, pattern, "\\") ||
+                EF.Functions.ILike(x.Packaging, pattern, "\\") ||
                 x.Aliases.Any(a => EF.Functions.ILike(a.Value, pattern, "\\")));
         }
         return View(new ProductIndexViewModel { Q = q, Status = status, Products = await query.OrderBy(x => x.Name).ThenBy(x => x.Sku).ToListAsync() });
@@ -56,6 +63,9 @@ public class ProductsController(FactoryOpsDbContext db, ProductCatalog catalog, 
         {
             Version = product.Version, Sku = product.Sku, Name = product.Name, Description = product.Description,
             Category = product.Category, UnitOfMeasure = product.UnitOfMeasure, Dimensions = product.Dimensions,
+            PackingSize = product.PackingSize, RoughIn = product.RoughIn, HeatingMethod = product.HeatingMethod,
+            FlushingMethod = product.FlushingMethod, CeramicBody = product.CeramicBody, Color = product.Color,
+            DisplayMode = product.DisplayMode, NetWeight = product.NetWeight, GrossWeight = product.GrossWeight,
             Specifications = product.Specifications, Packaging = product.Packaging, IsActive = product.IsActive,
             Aliases = string.Join(Environment.NewLine, product.Aliases.OrderBy(x => x.Value).Select(x => x.Value))
         });
@@ -124,10 +134,8 @@ public class ProductsController(FactoryOpsDbContext db, ProductCatalog catalog, 
     public IActionResult Import() => View(new ProductImportForm());
 
     [HttpGet]
-    public IActionResult CsvTemplate() => File(Encoding.UTF8.GetBytes(
-        "Sku,Name,Description,Category,UnitOfMeasure,Dimensions,Specifications,Packaging,IsActive,Aliases\r\n" +
-        "SAMPLE-001,Example product,Replace this sample,General,each,,,Box of 10,true,Example alias|EP\r\n"),
-        "text/csv", "products-template.csv");
+    public IActionResult CsvTemplate() => File(CsvImportExamples.Download(CsvImportExamples.Products),
+        "text/csv; charset=utf-8", "products-template.csv");
 
     [HttpPost, ValidateAntiForgeryToken, RequestSizeLimit(6 * 1024 * 1024)]
     public async Task<IActionResult> Import(ProductImportForm model)
@@ -168,6 +176,9 @@ public class ProductsController(FactoryOpsDbContext db, ProductCatalog catalog, 
                     {
                         Sku = Field("Sku"), Name = Field("Name"), UnitOfMeasure = Field("UnitOfMeasure"),
                         Description = Field("Description"), Category = Field("Category"), Dimensions = Field("Dimensions"),
+                        PackingSize = Field("PackingSize"), RoughIn = Field("RoughIn"), HeatingMethod = Field("HeatingMethod"),
+                        FlushingMethod = Field("FlushingMethod"), CeramicBody = Field("CeramicBody"), Color = Field("Color"),
+                        DisplayMode = Field("DisplayMode"), NetWeight = Field("NetWeight"), GrossWeight = Field("GrossWeight"),
                         Specifications = Field("Specifications"), Packaging = Field("Packaging"), Aliases = Field("Aliases"),
                         IsActive = string.IsNullOrWhiteSpace(activeText) || activeText.Equals("true", StringComparison.OrdinalIgnoreCase)
                     };

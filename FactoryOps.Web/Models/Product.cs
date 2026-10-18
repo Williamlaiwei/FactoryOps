@@ -15,6 +15,15 @@ public class Product : ICompanyRecord
     [MaxLength(100)] public string Category { get; set; } = "";
     [MaxLength(32)] public string UnitOfMeasure { get; set; } = "";
     [MaxLength(500)] public string Dimensions { get; set; } = "";
+    [MaxLength(500)] public string PackingSize { get; set; } = "";
+    [MaxLength(300)] public string RoughIn { get; set; } = "";
+    [MaxLength(200)] public string HeatingMethod { get; set; } = "";
+    [MaxLength(200)] public string FlushingMethod { get; set; } = "";
+    [MaxLength(300)] public string CeramicBody { get; set; } = "";
+    [MaxLength(300)] public string Color { get; set; } = "";
+    [MaxLength(200)] public string DisplayMode { get; set; } = "";
+    [MaxLength(100)] public string NetWeight { get; set; } = "";
+    [MaxLength(100)] public string GrossWeight { get; set; } = "";
     [MaxLength(4000)] public string Specifications { get; set; } = "";
     [MaxLength(1000)] public string Packaging { get; set; } = "";
     public bool IsActive { get; set; } = true;

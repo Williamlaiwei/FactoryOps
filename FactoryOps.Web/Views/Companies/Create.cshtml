@@ -1,0 +1,39 @@
+@model FactoryOps.Web.Models.CompanyCreateForm
+@{ ViewData["Title"] = "Create Company"; }
+
+<div class="container mt-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <h1>Create Company</h1>
+        <a asp-action="Index" class="btn btn-outline-secondary">Back to Companies</a>
+    </div>
+    <p class="text-muted">Start with an empty catalog, customer list, order list and knowledge library. Your new company gets its own default AI settings and is selected after creation.</p>
+    <div class="card"><div class="card-body">
+        <form asp-action="Create" method="post" id="createCompanyForm">
+            <input asp-for="CreationToken" type="hidden" />
+            <div asp-validation-summary="All" class="text-danger" role="alert"></div>
+            <div class="mb-3">
+                <label asp-for="Name" class="form-label"></label>
+                <input asp-for="Name" class="form-control" required maxlength="200" autocomplete="organization" />
+                <span asp-validation-for="Name" class="text-danger"></span>
+            </div>
+            <div class="mb-3">
+                <label asp-for="Website" class="form-label"></label>
+                <input asp-for="Website" class="form-control" type="url" maxlength="500" placeholder="https://example.com" autocomplete="url" />
+                <span asp-validation-for="Website" class="text-danger"></span>
+            </div>
+            <button type="submit" class="btn btn-primary">Create Company</button>
+        </form>
+    </div></div>
+</div>
+
+@section Scripts {
+    <script>
+        const companyForm = document.getElementById('createCompanyForm');
+        companyForm.addEventListener('submit', function () {
+            this.querySelector('button[type="submit"]').disabled = true;
+        });
+        window.addEventListener('pageshow', () => {
+            companyForm.querySelector('button[type="submit"]').disabled = false;
+        });
+    </script>
+}

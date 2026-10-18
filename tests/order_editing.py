@@ -374,6 +374,7 @@ def main():
         if result.wasSuccessful() and "--browser" in sys.argv:
             ENV["FACTORYOPS_TEST_BASE_URL"] = BASE
             script = ("tests/settings.browser.cjs" if "--settings" in sys.argv else
+                      "tests/company_profiles.browser.cjs" if "--companies" in sys.argv else
                       "tests/product_catalog.browser.cjs" if "--catalog" in sys.argv else "tests/order_editing.browser.cjs")
             command(["node", script])
         return 0 if result.wasSuccessful() else 1

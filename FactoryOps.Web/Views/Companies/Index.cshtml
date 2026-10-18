@@ -2,13 +2,16 @@
 @inject FactoryOps.Web.Services.CompanyContext Company
 @{ ViewData["Title"] = "Company Profiles"; }
 <div class="container mt-4">
-    <h2>Company Profiles</h2>
-    <p class="text-muted">Choose the FTI demo or start with the empty company. Products, customers, sites, orders and AI knowledge are kept separate.</p>
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+        <h2 class="mb-0">Company Profiles</h2>
+        <a asp-action="Create" class="btn btn-primary">+ Create Company</a>
+    </div>
+    <p class="text-muted">Select a company or create a new one. Products, customers, sites, orders, AI settings and knowledge are kept separate.</p>
     @if (TempData["CompanyMessage"] is string message) { <div class="alert alert-info" role="status">@message</div> }
     <div class="row g-3 mb-4">
         @foreach (var profile in Model)
         {
-            <div class="col-md-6"><div class="card h-100"><div class="card-body">
+            <div class="col-md-6"><div class="card h-100 company-profile" data-company-key="@profile.Key"><div class="card-body">
                 <h5>@profile.Name</h5><p>@(profile.IsDemo ? "Demo product codes; no live stock or prices." : "Your own company data and knowledge documents.")</p>
                 @if (profile.Key == Company.Key) { <span class="badge bg-success">Active company</span> }
                 else { <form asp-action="Select" method="post"><input type="hidden" name="key" value="@profile.Key" /><button type="submit" class="btn btn-outline-primary">Use This Company</button></form> }

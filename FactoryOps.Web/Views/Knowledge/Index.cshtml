@@ -37,7 +37,12 @@
                 @foreach (var candidate in Model.Result.Candidates)
                 {
                     <tr class="knowledge-candidate" data-product-id="@candidate.Id">
-                        <td><strong>@candidate.Sku</strong><div>@candidate.Name</div><a asp-controller="Products" asp-action="Edit" asp-route-id="@candidate.Id">View Catalog Record</a></td>
+                        <td><strong>@candidate.Sku</strong><div>@candidate.Name</div>
+                            @if (!string.IsNullOrWhiteSpace(candidate.Dimensions) || !string.IsNullOrWhiteSpace(candidate.PackingSize) || !string.IsNullOrWhiteSpace(candidate.RoughIn) || !string.IsNullOrWhiteSpace(candidate.Color) || !string.IsNullOrWhiteSpace(candidate.CeramicBody))
+                            {
+                                <div class="small text-muted">@if (!string.IsNullOrWhiteSpace(candidate.Dimensions)) { <span>Size: @candidate.Dimensions </span> } @if (!string.IsNullOrWhiteSpace(candidate.PackingSize)) { <span>Packing: @candidate.PackingSize </span> } @if (!string.IsNullOrWhiteSpace(candidate.RoughIn)) { <span>Rough-in: @candidate.RoughIn </span> } @if (!string.IsNullOrWhiteSpace(candidate.Color)) { <span>Color: @candidate.Color </span> } @if (!string.IsNullOrWhiteSpace(candidate.CeramicBody)) { <span>Body: @candidate.CeramicBody</span> }</div>
+                            }
+                            <a asp-controller="Products" asp-action="Edit" asp-route-id="@candidate.Id">View Catalog Record</a></td>
                         <td>@candidate.UnitOfMeasure</td><td>@candidate.MatchMethod.Replace('_', ' ')</td>
                         <td>@(candidate.IsDemo || !candidate.SkuIsVerified ? "Demo or unverified code: confirm actual supplier details" : "Human confirmation required")</td>
                     </tr>

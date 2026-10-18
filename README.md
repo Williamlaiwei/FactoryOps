@@ -66,7 +66,7 @@ numbers, as in the existing order system; fractional quantities are outside Phas
 
 **Import CSV** includes a downloadable template. Files must be UTF-8 CSV, at most
 5 MB and at most 1,000 data rows. Required headers: `Sku,Name,UnitOfMeasure`.
-Optional headers: `Description,Category,Dimensions,Specifications,Packaging,IsActive,Aliases`.
+Optional headers: `Description,Category,Dimensions,PackingSize,RoughIn,HeatingMethod,FlushingMethod,CeramicBody,Color,DisplayMode,NetWeight,GrossWeight,Specifications,Packaging,IsActive,Aliases`.
 Headers ignore case and surrounding whitespace. `IsActive` accepts `true`/`false`
 and defaults to true if blank. Separate aliases with `|`; quote fields containing
 commas or newlines. Import creates new products only. Duplicate SKUs (including
@@ -74,8 +74,11 @@ existing products), malformed rows and validation failures reject the whole file
 Use the edit page to change an existing product.
 
 `/Products/Lookup?q=...` matches an active product by exact SKU first, then exact
-name or alias, ignoring case. Shared aliases return every candidate; no fuzzy or
-AI matching is performed. Catalog search also supports partial text.
+name or alias, ignoring case. Shared aliases return every candidate. Catalog
+search includes saved product information. The knowledge candidate matcher also
+uses size, packing size, rough-in, heating and flushing methods, ceramic body,
+color, display mode and weights when suggesting catalog candidates; suggestions
+still require human review.
 
 Three catalog decisions:
 
@@ -88,8 +91,9 @@ Three catalog decisions:
   values. The product foreign key restricts deletion. Product edits and imports
   save their products and aliases in one transaction; product `xmin` checks reject
   stale edits without an extra schema column.
-- Startup applies `FactoryOps.Web/Data/Sql/002-product-catalog.sql` inside a
-  transaction with a PostgreSQL advisory lock. It adds tables/columns/indexes and
+- Startup applies the additive SQL files in `FactoryOps.Web/Data/Sql` inside a
+  transaction with a PostgreSQL advisory lock. `006-product-information.sql` adds
+  the structured product fields without changing existing records or orders. It adds tables/columns/indexes and
   a one-time initialization marker. No EF migrations, database resets or volume
   removal are used. Repeated application preserves catalog changes and deletions.
 
@@ -100,11 +104,30 @@ your actual company codes and units**. Existing order-line names and quantities
 are preserved. Known product links are populated, while unknown historical SKU
 and unit snapshots remain blank instead of inventing historical values.
 
-The Company screen now selects an FTI demo profile or an initially empty company.
-Company names and websites can be edited there. Products, customers, sites and
-orders are scoped to the selected profile; the same SKU may exist in different
-profiles. Company selection is a local operator feature, not user authentication
-or an enterprise tenant security system.
+The Company screen starts with an FTI demo profile and an initially empty company.
+Use **+ Create Company** to add more profiles with a name and an optional HTTPS
+website. Creation selects the new profile and saves its default AI settings in the
+same transaction. New profiles start with empty products, customers, sites, orders
+and knowledge; they do not copy demo data or another company's settings. A per-form
+token prevents repeated submissions from creating duplicates. Existing names and
+websites can be edited on the Company screen. Data is scoped to the selected
+profile; the same SKU may exist in different profiles. Company selection is a
+local operator feature, not user authentication or an enterprise tenant security
+system. Interface labels and messages are English, including the names of reply
+language options; user data and document contents keep their original language.
+
+## CSV import examples
+
+Customer Management offers **Download Customer CSV Example** at
+`/Customers/CsvTemplate`, containing all 12 customer/site columns and one fictional
+row. Keep all column headings; repeat CompanyName for multiple sites. The catalog
+import screen offers **Download Product CSV Example** at `/Products/CsvTemplate`,
+with the supported product columns and a fictional `04412` SKU. Both pages show
+the same CSV as a preview. Downloads use UTF-8 with a BOM. Keep SKU, phone and
+postcode columns as text when editing in a spreadsheet to preserve leading zeroes.
+Replace sample rows with real data before importing; downloading does not create
+records. The browser regression imports both downloaded files into the temporary
+database and checks their customer/site fields, numeric SKU and aliases.
 
 ## FTI demo and empty company
 
@@ -246,6 +269,7 @@ dotnet build FactoryOps.Web/FactoryOps.Web.csproj
 python tests/order_editing.py
 python tests/order_editing.py --catalog
 python tests/order_editing.py --companies
+python tests/order_editing.py --companies --browser
 python tests/order_editing.py --knowledge
 python tests/order_editing.py --settings --browser
 ```

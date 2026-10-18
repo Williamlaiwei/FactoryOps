@@ -1,5 +1,6 @@
 // Run in the isolated database: python tests/order_editing.py --catalog --browser
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const path = require("node:path");
 const { chromium } = require("../artifacts/browser-tools/node_modules/playwright");
 
@@ -8,11 +9,12 @@ const { chromium } = require("../artifacts/browser-tools/node_modules/playwright
     try {
         const base = process.env.FACTORYOPS_TEST_BASE_URL;
         assert.ok(base, "Run through the Python test runner");
-        const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
+        const page = await browser.newPage({ locale: "zh-TW", viewport: { width: 1440, height: 1100 } });
         const errors = [];
         page.on("pageerror", error => errors.push(error.message));
-        const sku = `WEB-${Date.now()}`;
+        const sku = `WEB-04412-${Date.now()}`;
         const alias = `PanelAlias${Date.now()}`;
+        const numericAlias = "00078";
         await page.goto(base + "/Products/Create");
         await page.locator("#Sku").fill(sku);
         await page.locator("#Name").fill("Browser panel");
@@ -21,7 +23,7 @@ const { chromium } = require("../artifacts/browser-tools/node_modules/playwright
         await page.locator("#Dimensions").fill("2400 x 1200 mm");
         await page.locator("#Specifications").fill("Coated steel");
         await page.locator("#Packaging").fill("Pack of 10");
-        await page.locator("#Aliases").fill(alias);
+        await page.locator("#Aliases").fill(`${alias}|${numericAlias}`);
         await Promise.all([page.waitForURL(base + "/Products"), page.getByRole("button", { name: "Create Product", exact: true }).click()]);
         const productRow = page.locator("tr[data-product-id]").filter({ hasText: sku });
         const productId = await productRow.getAttribute("data-product-id");
@@ -35,12 +37,43 @@ const { chromium } = require("../artifacts/browser-tools/node_modules/playwright
         await page.locator("#searchResults button").filter({ hasText: "Catalog Test Customer" }).click();
         await page.locator('#ConstructionSiteId option[value="601"]').waitFor({ state: "attached" });
         await page.locator("#ConstructionSiteId").selectOption("601");
-        await page.locator("#productFilter").fill(alias);
-        const visibleOptions = await page.locator('select[data-field="ProductId"] option[data-search]').evaluateAll(
-            options => options.filter(option => !option.hidden).map(option => option.value));
-        assert.deepEqual(visibleOptions, [productId]);
-        await page.locator('select[data-field="ProductId"]').selectOption(productId);
-        await page.locator('input[data-field="Quantity"]').fill("7");
+        const productFilter = page.locator("#productFilter");
+        const itemRows = page.locator("#orderItemsContainer .order-item");
+        const productSelect = itemRows.first().locator('select[data-field="ProductId"]');
+        const options = productSelect.locator('option[data-search]');
+        const originalOptions = await options.evaluateAll(elements => elements.map(option => option.value));
+        const visibleOptions = () => options.evaluateAll(elements => elements.filter(option => !option.hidden).map(option => option.value));
+        for (const query of [alias, "04412", numericAlias, "browser PANEL"]) {
+            await productFilter.fill(query);
+            assert.deepEqual(await visibleOptions(), [productId]);
+        }
+        await productSelect.selectOption(productId);
+        assert.equal(await productFilter.inputValue(), "");
+        assert.deepEqual(await visibleOptions(), originalOptions);
+        await itemRows.first().locator('input[data-field="Quantity"]').fill("7");
+        await page.locator("#addItemButton").click();
+        const nextSelect = itemRows.nth(1).locator('select[data-field="ProductId"]');
+        await productFilter.fill("no-matching-product-928631");
+        assert.match(await page.locator("#productFilterMessage").innerText(), /0 matching product/);
+        assert.equal(await productSelect.inputValue(), productId);
+        assert.equal(await itemRows.first().locator('input[data-field="Quantity"]').inputValue(), "7");
+        assert.deepEqual(await visibleOptions(), [productId]);
+        assert.equal(await nextSelect.locator('option[data-search]').evaluateAll(elements => elements.filter(option => !option.hidden).length), 0);
+        await page.getByRole("button", { name: "Clear Search", exact: true }).click();
+        assert.equal(await productFilter.inputValue(), "");
+        assert.deepEqual(await visibleOptions(), originalOptions);
+        assert.equal(await nextSelect.inputValue(), "");
+        await productFilter.fill("04412");
+        await productFilter.fill("");
+        assert.deepEqual(await visibleOptions(), originalOptions);
+        await productFilter.fill("04412");
+        await page.locator("#addItemButton").click();
+        assert.equal(await productFilter.inputValue(), "");
+        assert.deepEqual(await visibleOptions(), originalOptions);
+        const addedOptions = itemRows.nth(2).locator('option[data-search]');
+        assert.deepEqual(await addedOptions.evaluateAll(elements => elements.filter(option => !option.hidden).map(option => option.value)), originalOptions);
+        await itemRows.nth(2).locator(".remove-item-btn").click();
+        await itemRows.nth(1).locator(".remove-item-btn").click();
         await page.locator("#DueDate").fill(new Date(Date.now() + 15 * 86400000).toISOString().slice(0, 10));
         await Promise.all([page.waitForURL(base + "/WorkOrders"), page.locator("#saveOrderButton").click()]);
         const message = await page.locator('[role="status"]').first().innerText();
@@ -56,6 +89,18 @@ const { chromium } = require("../artifacts/browser-tools/node_modules/playwright
         assert.equal(await page.locator('select[data-field="ProductId"]').inputValue(), productId);
         assert.match(await page.locator('select[data-field="ProductId"] option:checked').innerText(), /inactive, existing line only/);
         assert.match(await page.locator("#orderItemsContainer").innerText(), /Recorded product: Browser panel/);
+        const historicalSelect = page.locator('select[data-field="ProductId"]');
+        const historicalOptions = historicalSelect.locator('option[data-search]');
+        const historicalOriginal = await historicalOptions.evaluateAll(elements => elements.map(option => option.value));
+        await productFilter.fill("no-match-for-inactive-product");
+        assert.equal(await historicalSelect.inputValue(), productId);
+        assert.match(await historicalSelect.locator("option:checked").innerText(), /inactive, existing line only/);
+        await page.getByRole("button", { name: "Clear Search", exact: true }).click();
+        assert.deepEqual(await historicalOptions.evaluateAll(elements => elements.filter(option => !option.hidden).map(option => option.value)), historicalOriginal);
+        await productFilter.fill(numericAlias);
+        await historicalSelect.selectOption(productId);
+        // Reselecting the same native option need not fire change; clearing always restores choices.
+        await productFilter.fill("");
         await page.locator('input[data-field="Quantity"]').fill("8");
         await Promise.all([page.waitForURL(base + "/WorkOrders"), page.locator("#saveOrderButton").click()]);
         await page.locator(`button[data-bs-target="#orderDetails-${orderId}"]`).click();
@@ -69,7 +114,10 @@ const { chromium } = require("../artifacts/browser-tools/node_modules/playwright
         const file = { name: "products.csv", mimeType: "text/csv", buffer: Buffer.from(
             `Sku,Name,UnitOfMeasure,Aliases\n${csvSku},CSV browser product,box,CSV alias\n`, "utf8") };
         await page.goto(base + "/Products/Import");
+        assert.equal(await page.locator(".file-picker-button").innerText(), "Choose File");
+        assert.equal(await page.locator(".file-picker-name").innerText(), "No file chosen");
         await page.locator("#File").setInputFiles(file);
+        assert.equal(await page.locator(".file-picker-name").innerText(), "products.csv");
         await Promise.all([page.waitForURL(base + "/Products"), page.getByRole("button", { name: "Import Products", exact: true }).click()]);
         const csvRow = page.locator("tr[data-product-id]").filter({ hasText: csvSku });
         const csvProductId = await csvRow.getAttribute("data-product-id");
@@ -84,8 +132,45 @@ const { chromium } = require("../artifacts/browser-tools/node_modules/playwright
         assert.equal(await page.locator(`tr[data-product-id="${csvProductId}"]`).count(), 0);
         await page.goto(base + "/WorkOrders/New");
         assert.equal(await page.locator(`select[data-field="ProductId"] option[value="${productId}"]`).count(), 0);
+
+        // Use the downloaded examples themselves, rather than separately constructed fixtures.
+        await page.goto(base + "/Customers");
+        const customerDownload = page.waitForEvent("download");
+        await page.getByRole("link", { name: "Download Customer CSV Example", exact: true }).click();
+        const customerCsv = fs.readFileSync(await (await customerDownload).path());
+        assert.ok(customerCsv.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf])));
+        assert.ok((await page.locator("pre").textContent()).trim() === customerCsv.toString("utf8").replace(/^\uFEFF/, "").trim());
+        await page.getByText("Add New Customer", { exact: true }).click();
+        await page.getByText("Bulk Import from CSV (optional)", { exact: true }).click();
+        assert.equal(await page.locator(".file-picker-button").innerText(), "Choose File");
+        assert.equal(await page.locator(".file-picker-name").innerText(), "No file chosen");
+        await page.locator("#csvFile").setInputFiles({ name: "customers-sites-example.csv", mimeType: "text/csv", buffer: customerCsv });
+        assert.equal(await page.locator(".file-picker-name").innerText(), "customers-sites-example.csv");
+        await page.getByRole("button", { name: "Import CSV", exact: true }).click();
+        const exampleCustomer = page.locator(".customer-item").filter({ hasText: "Example Customer Pty Ltd" });
+        await exampleCustomer.waitFor();
+        await exampleCustomer.locator(":scope > summary").click();
+        await exampleCustomer.locator(".site-list").getByText("Example Site", { exact: true }).waitFor();
+        assert.match(await exampleCustomer.innerText(), /0400000000/);
+        assert.match(await exampleCustomer.locator(".site-list").innerText(), /0400000001/);
+
+        await page.goto(base + "/Products/Import");
+        const productDownload = page.waitForEvent("download");
+        await page.getByRole("link", { name: "Download Product CSV Example", exact: true }).click();
+        const productCsv = fs.readFileSync(await (await productDownload).path());
+        assert.ok(productCsv.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf])));
+        assert.ok((await page.locator("pre").textContent()).trim() === productCsv.toString("utf8").replace(/^\uFEFF/, "").trim());
+        await page.locator("#File").setInputFiles({ name: "products-template.csv", mimeType: "text/csv", buffer: productCsv });
+        await Promise.all([page.waitForURL(base + "/Products"), page.getByRole("button", { name: "Import Products", exact: true }).click()]);
+        const exampleProduct = page.locator("tr[data-product-id]").filter({ hasText: "Example panel" });
+        assert.equal(await exampleProduct.count(), 1);
+        assert.match(await exampleProduct.innerText(), /04412/);
+        await exampleProduct.getByRole("link", { name: "Edit", exact: true }).click();
+        assert.equal(await page.locator("#Sku").inputValue(), "04412");
+        assert.equal(await page.locator("#UnitOfMeasure").inputValue(), "sheet");
+        assert.match(await page.locator("#Aliases").inputValue(), /Panel sample/);
         assert.deepEqual(errors, []);
-        console.log("PASS: Edge catalog CRUD, alias filter, CSV import/errors and historical order snapshots.");
+        console.log("PASS: Edge catalog CRUD, numeric/alias filtering, search reset, CSV import/errors, historical snapshots, and download/preview/import of both CSV examples.");
     } finally {
         await browser.close();
     }

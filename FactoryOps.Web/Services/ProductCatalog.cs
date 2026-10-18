@@ -16,6 +16,15 @@ public class ProductCatalog(FactoryOpsDbContext db)
         form.Description = form.Description?.Trim();
         form.Category = form.Category?.Trim();
         form.Dimensions = form.Dimensions?.Trim();
+        form.PackingSize = form.PackingSize?.Trim();
+        form.RoughIn = form.RoughIn?.Trim();
+        form.HeatingMethod = form.HeatingMethod?.Trim();
+        form.FlushingMethod = form.FlushingMethod?.Trim();
+        form.CeramicBody = form.CeramicBody?.Trim();
+        form.Color = form.Color?.Trim();
+        form.DisplayMode = form.DisplayMode?.Trim();
+        form.NetWeight = form.NetWeight?.Trim();
+        form.GrossWeight = form.GrossWeight?.Trim();
         form.Specifications = form.Specifications?.Trim();
         form.Packaging = form.Packaging?.Trim();
     }
@@ -45,6 +54,15 @@ public class ProductCatalog(FactoryOpsDbContext db)
         product.Category = form.Category ?? "";
         product.UnitOfMeasure = form.UnitOfMeasure;
         product.Dimensions = form.Dimensions ?? "";
+        product.PackingSize = form.PackingSize ?? "";
+        product.RoughIn = form.RoughIn ?? "";
+        product.HeatingMethod = form.HeatingMethod ?? "";
+        product.FlushingMethod = form.FlushingMethod ?? "";
+        product.CeramicBody = form.CeramicBody ?? "";
+        product.Color = form.Color ?? "";
+        product.DisplayMode = form.DisplayMode ?? "";
+        product.NetWeight = form.NetWeight ?? "";
+        product.GrossWeight = form.GrossWeight ?? "";
         product.Specifications = form.Specifications ?? "";
         product.Packaging = form.Packaging ?? "";
         product.IsActive = form.IsActive;

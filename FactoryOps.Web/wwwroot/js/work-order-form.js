@@ -13,13 +13,37 @@
     const items = document.getElementById("orderItemsContainer");
     const save = document.getElementById("saveOrderButton");
     const productFilter = document.getElementById("productFilter");
+    const clearProductFilterButton = document.getElementById("clearProductFilterButton");
+    const productFilterMessage = document.getElementById("productFilterMessage");
     function filterProducts() {
+        // Keep numeric codes as text so leading zeroes remain significant.
         const query = productFilter.value.trim().toLowerCase();
+        const matches = new Set();
         items.querySelectorAll("select[data-field='ProductId'] option").forEach(option => {
-            option.hidden = Boolean(option.value) && !option.selected && !(option.dataset.search || "").includes(query);
+            const matched = (option.dataset.search || "").includes(query);
+            if (option.value && matched) matches.add(option.value);
+            option.hidden = Boolean(option.value) && !option.selected && !matched;
         });
+        clearProductFilterButton.classList.toggle("d-none", !query);
+        productFilterMessage.classList.toggle("d-none", !query);
+        productFilterMessage.textContent = query
+            ? `${matches.size} matching product(s). Current selections are kept. Selecting a product restores the full list.`
+            : "";
+    }
+    function clearProductFilter() {
+        productFilter.value = "";
+        filterProducts();
     }
     productFilter.addEventListener("input", filterProducts);
+    productFilter.addEventListener("search", filterProducts);
+    clearProductFilterButton.addEventListener("click", () => {
+        clearProductFilter();
+        productFilter.focus();
+    });
+    items.addEventListener("change", event => {
+        if (event.target.matches("select[data-field='ProductId']") && event.target.value)
+            clearProductFilter();
+    });
     let timer;
     let searchRequest;
     let siteRequest;
@@ -122,7 +146,7 @@
     document.getElementById("addItemButton").addEventListener("click", () => {
         items.appendChild(document.getElementById("orderItemTemplate").content.cloneNode(true));
         reindexItems();
-        filterProducts();
+        clearProductFilter();
         items.lastElementChild.querySelector("select").focus();
     });
     items.addEventListener("click", event => {
@@ -130,6 +154,7 @@
         if (!button) return;
         button.closest(".order-item").remove();
         reindexItems();
+        filterProducts();
     });
     form.addEventListener("submit", event => {
         message.textContent = "";
@@ -143,6 +168,7 @@
         save.textContent = "Saving...";
     });
     window.addEventListener("pageshow", () => {
+        filterProducts();
         submitting = false;
         save.disabled = false;
         save.textContent = form.action.includes("/Edit") ? "Save Changes" : "Create Order";

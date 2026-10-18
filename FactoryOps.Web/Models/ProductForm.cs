@@ -13,6 +13,15 @@ public class ProductForm
     [StringLength(100)] public string? Category { get; set; }
     [Required, StringLength(32)] public string UnitOfMeasure { get; set; } = "each";
     [StringLength(500)] public string? Dimensions { get; set; }
+    [StringLength(500)] public string? PackingSize { get; set; }
+    [StringLength(300)] public string? RoughIn { get; set; }
+    [StringLength(200)] public string? HeatingMethod { get; set; }
+    [StringLength(200)] public string? FlushingMethod { get; set; }
+    [StringLength(300)] public string? CeramicBody { get; set; }
+    [StringLength(300)] public string? Color { get; set; }
+    [StringLength(200)] public string? DisplayMode { get; set; }
+    [StringLength(100)] public string? NetWeight { get; set; }
+    [StringLength(100)] public string? GrossWeight { get; set; }
     [StringLength(4000)] public string? Specifications { get; set; }
     [StringLength(1000)] public string? Packaging { get; set; }
     public bool IsActive { get; set; } = true;
