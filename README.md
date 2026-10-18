@@ -199,6 +199,43 @@ There are no duplicate work-order controllers or overlapping import actions. The
 original order workflow still handles actual order persistence; knowledge content
 cannot override it.
 
+## AI and workflow settings (preparation for the next stage)
+
+Open **Settings** at http://localhost:8080/Settings. Preferences are saved in
+`AiWorkflowSettings`, one row per company, using the same active-company context
+as orders and products. Additive, repeatable `005-ai-workflow-settings.sql` seeds
+missing rows without resetting saved settings. Saving a stale version or a form
+from a different company is rejected. No existing business records are changed.
+
+The planned AI provider is **OpenAI**, with the fixed official
+`https://api.openai.com/v1` endpoint. Optional model IDs cover order extraction and
+reply generation, phone transcription and knowledge embeddings. They start blank;
+the settings page does not invent or verify model access. Optional
+`OPENAI_API_KEY` is supplied to the web server through Compose's environment, in
+line with [OpenAI's server-side authentication guidance](https://developers.openai.com/api/reference/overview).
+The page reports only whether a value is present, never its value or connection
+success. There is no browser key field and no OpenAI request on save.
+
+These are stored **preferences for upcoming features**:
+
+- Include phone conversation records and email orders in the future AI page.
+- An order inbox address, without mailbox credentials or a live connection.
+- Default: human review before creating an order. Alternative: create an
+  AI-labelled draft inside the system, then review. Both planned policies retain
+  missing-field warnings and require human confirmation before fulfilment.
+- Clarification reply instructions, English/Australian or Traditional Chinese,
+  email/message/both preference, sender address and signature. Generated replies
+  will be reviewed before sending. Email and messaging interfaces are reserved;
+  provider authentication and sending adapters remain to be implemented.
+
+This stage implements settings only. It does not implement intake, AI-labelled
+drafts, review, reply generation, email syncing or message sending. Existing
+knowledge search still uses its local embeddings and existing index. Connecting
+OpenAI embeddings requires a deliberate re-indexing step before switching search;
+storing a different embedding model here does not mix embedding spaces or change
+the live index. The next stage is to connect the OpenAI-backed workflow using
+these preferences and the existing catalog/retrieval boundary.
+
 ## Verification
 
 Prerequisites: running Docker Desktop, the Compose database service, `.env` password,
@@ -210,6 +247,7 @@ python tests/order_editing.py
 python tests/order_editing.py --catalog
 python tests/order_editing.py --companies
 python tests/order_editing.py --knowledge
+python tests/order_editing.py --settings --browser
 ```
 
 The regression runner builds a separate web container on port 18080 and creates a
@@ -253,3 +291,10 @@ all three file formats, chunking, real embeddings, retrieval/citations, document
 deduplication, updates/reindex/deletion, cross-company access, untrusted document
 content and rollback on injected embedding/database failures. Its Edge check uses
 the real MVC/Python boundary and saves `artifacts/ai-knowledge.png`.
+
+The settings suite checks defaults, save/reload, validation, company isolation,
+identity overposting, concurrent/repeated saves, antiforgery protection and
+repeatable SQL initialization in a temporary database. The Edge check verifies
+the actual form, source toggles, stale tabs and mobile layout, and saves
+`artifacts/ai-settings.png`. It uses a clearly fake test credential to verify that
+configured-key status never exposes a key. No OpenAI or messaging calls are made.

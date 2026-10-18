@@ -10,6 +10,7 @@ services:
       ASPNETCORE_HTTP_PORTS: 8080
       KnowledgeService__BaseUrl: "http://ai:8000"
       KnowledgeService__ApiKey: "${FACTORYOPS_AI_KEY:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
       ConnectionStrings__FactoryOps: "Host=db;Port=5432;Database=factoryops;Username=factoryops;Password=${POSTGRES_PASSWORD:?Password required}"
     depends_on:
       db:

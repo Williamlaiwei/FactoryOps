@@ -25,11 +25,16 @@ public class FactoryOpsDbContext : DbContext
     public DbSet<Product> Products => Set<Product>();
     public DbSet<ProductAlias> ProductAliases => Set<ProductAlias>();
     public DbSet<CompanyProfile> CompanyProfiles => Set<CompanyProfile>();
+    public DbSet<AiWorkflowSettings> AiWorkflowSettings => Set<AiWorkflowSettings>();
     protected override void OnModelCreating(
     ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<WorkOrder>().Property(x => x.Version).IsRowVersion();
         modelBuilder.Entity<Product>().Property(x => x.Version).IsRowVersion();
+        modelBuilder.Entity<AiWorkflowSettings>().Property(x => x.Version).IsRowVersion();
+        modelBuilder.Entity<AiWorkflowSettings>().HasQueryFilter(x => x.CompanyKey == _company.Key);
+        modelBuilder.Entity<AiWorkflowSettings>().HasOne<CompanyProfile>().WithOne()
+            .HasForeignKey<AiWorkflowSettings>(x => x.CompanyKey).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<Product>().HasIndex(x => new { x.CompanyKey, x.Sku }).IsUnique();
         modelBuilder.Entity<Product>().Property(x => x.SourceUrl).HasDefaultValue("");
         modelBuilder.Entity<Product>().Property(x => x.IsDemo).HasDefaultValue(false);

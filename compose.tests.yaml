@@ -11,6 +11,7 @@ services:
       ASPNETCORE_HTTP_PORTS: 8080
       KnowledgeService__BaseUrl: "http://knowledge-tests:8000"
       KnowledgeService__ApiKey: "${FACTORYOPS_AI_KEY:-}"
+      OPENAI_API_KEY: "test-key-not-a-real-openai-credential"
       ConnectionStrings__FactoryOps: "Host=db;Port=5432;Database=${FACTORYOPS_TEST_DATABASE:?Run tests/order_editing.py};Username=factoryops;Password=${POSTGRES_PASSWORD:?Password required}"
     depends_on:
       db:

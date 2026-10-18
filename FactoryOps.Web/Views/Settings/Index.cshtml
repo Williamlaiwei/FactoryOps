@@ -1,0 +1,134 @@
+@model FactoryOps.Web.Models.SettingsForm
+@inject FactoryOps.Web.Services.CompanyContext Company
+@{
+    ViewData["Title"] = "AI & Workflow Settings";
+    var keyConfigured = ViewData["OpenAiKeyConfigured"] is true;
+}
+
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+    <div>
+        <h1>AI &amp; Workflow Settings</h1>
+        <p class="text-muted mb-0">Preferences for <strong>@Company.Profile.Name</strong>. Each company keeps its own settings.</p>
+    </div>
+    <a class="btn btn-outline-secondary" asp-controller="Companies" asp-action="Index">Company Profile / Switch Company</a>
+</div>
+
+@if (TempData["SettingsMessage"] is string message)
+{
+    <div class="alert alert-success" role="status">@message</div>
+}
+
+<div class="alert alert-info">
+    <strong>Settings preparation.</strong> This page saves preferences. Phone intake, email connections, AI order drafts,
+    review and reply generation are upcoming features. Saving does not import orders, connect a mailbox or send messages.
+</div>
+
+<form asp-action="Index" method="post" id="ai-settings-form">
+    <input asp-for="Version" type="hidden" />
+    <div asp-validation-summary="All" class="text-danger" role="alert"></div>
+
+    <section class="card mb-3" aria-labelledby="openai-heading">
+        <div class="card-body">
+            <h2 class="h4" id="openai-heading">1. OpenAI</h2>
+            <p>AI provider: <strong>OpenAI</strong> &middot; API endpoint: <code>https://api.openai.com/v1</code></p>
+            <p id="openai-key-status">
+                Server API key: <strong>@(keyConfigured ? "Configured (not tested)" : "Not configured")</strong>.
+                Set <code>OPENAI_API_KEY</code> in the server environment. Keys are never entered or displayed here.
+            </p>
+            <p class="text-muted">Enter model IDs available to your OpenAI project, or leave blank to decide later. Saving does not verify model access or call OpenAI.</p>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label asp-for="OrderModel" class="form-label"></label>
+                    <input asp-for="OrderModel" class="form-control" maxlength="100" autocomplete="off" />
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="TranscriptionModel" class="form-label"></label>
+                    <input asp-for="TranscriptionModel" class="form-control" maxlength="100" autocomplete="off" />
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="EmbeddingModel" class="form-label"></label>
+                    <input asp-for="EmbeddingModel" class="form-control" maxlength="100" autocomplete="off" />
+                </div>
+            </div>
+            <p class="small text-muted mt-3 mb-0">Existing AI Knowledge search still uses its local embedding index. OpenAI embedding integration and re-indexing are pending; changing this preference does not change that index.</p>
+        </div>
+    </section>
+
+    <section class="card mb-3" aria-labelledby="intake-heading">
+        <div class="card-body">
+            <h2 class="h4" id="intake-heading">2. Order Intake &amp; Review <span class="badge bg-secondary fs-6">Planned</span></h2>
+            <label asp-for="IntakeMode" class="form-label"></label>
+            <select asp-for="IntakeMode" class="form-select mb-2" aria-describedby="intake-help">
+                <option value="ReviewBeforeImport">Human review before creating an order (default)</option>
+                <option value="CreateAiDraft">Create an AI-labelled draft in the system, then review</option>
+            </select>
+            <p id="intake-help" class="text-muted">AI drafts will retain their source and missing-field warnings. Both policies require human confirmation before an order is ready for fulfilment.</p>
+            <p class="fw-semibold mb-2">Sources to include in the future AI page</p>
+            <div class="form-check">
+                <input asp-for="UsePhoneRecords" class="form-check-input" />
+                <label asp-for="UsePhoneRecords" class="form-check-label"></label>
+            </div>
+            <div class="form-check mb-3">
+                <input asp-for="UseEmailOrders" class="form-check-input" />
+                <label asp-for="UseEmailOrders" class="form-check-label"></label>
+            </div>
+            <label asp-for="MailboxAddress" class="form-label"></label>
+            <input asp-for="MailboxAddress" class="form-control" type="email" maxlength="254" aria-describedby="mailbox-help" />
+            <p class="small text-muted mt-2 mb-0" id="mailbox-help">Address preference only. Email authentication, syncing and attachment import are not connected.</p>
+        </div>
+    </section>
+
+    <section class="card mb-3" aria-labelledby="reply-heading">
+        <div class="card-body">
+            <h2 class="h4" id="reply-heading">3. Missing Information &amp; Replies <span class="badge bg-secondary fs-6">Planned</span></h2>
+            <p>Planned flow: identify missing customer, product, quantity, unit, delivery date or site details; generate a request for clarification; let a person review the reply before sending.</p>
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label asp-for="ReplyChannel" class="form-label"></label>
+                    <select asp-for="ReplyChannel" class="form-select">
+                        <option value="Email">Email</option>
+                        <option value="Message">Message</option>
+                        <option value="Both">Email and message</option>
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label asp-for="ReplyLanguage" class="form-label"></label>
+                    <select asp-for="ReplyLanguage" class="form-select">
+                        <option value="en-AU">English (Australia)</option>
+                        <option value="zh-TW">繁體中文</option>
+                    </select>
+                </div>
+                <div class="col-12">
+                    <label asp-for="ReplyFromAddress" class="form-label"></label>
+                    <input asp-for="ReplyFromAddress" class="form-control" type="email" maxlength="254" />
+                </div>
+                <div class="col-12">
+                    <label asp-for="MissingInfoInstructions" class="form-label"></label>
+                    <textarea asp-for="MissingInfoInstructions" class="form-control" rows="3" maxlength="2000" placeholder="Example: list missing details clearly and ask the customer to confirm quantities and delivery date."></textarea>
+                </div>
+                <div class="col-12">
+                    <label asp-for="ReplySignature" class="form-label"></label>
+                    <textarea asp-for="ReplySignature" class="form-control" rows="3" maxlength="2000"></textarea>
+                </div>
+            </div>
+            <div class="border rounded p-3 bg-light">
+                <strong>Outbound interfaces reserved</strong>
+                <p class="mb-0">Email sender: not connected. Messaging provider: not connected. Provider selection and credentials will be added with the sending integration.</p>
+            </div>
+        </div>
+    </section>
+
+    <div class="d-flex flex-wrap gap-2 mb-4">
+        <button type="submit" class="btn btn-primary">Save Settings</button>
+        <a asp-action="Index" class="btn btn-outline-secondary">Reload Saved Settings</a>
+        <a asp-controller="Knowledge" asp-action="Index" class="btn btn-outline-secondary">AI Knowledge</a>
+    </div>
+</form>
+
+@section Scripts {
+    <script>
+        document.getElementById('ai-settings-form').addEventListener('submit', function () {
+            this.querySelector('button[type="submit"]').disabled = true;
+        });
+    </script>
+}
