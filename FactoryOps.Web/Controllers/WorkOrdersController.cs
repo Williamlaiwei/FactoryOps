@@ -1,125 +1,89 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using FactoryOps.Web.Data;
 using FactoryOps.Web.Models;
+
 namespace FactoryOps.Web.Controllers;
-public class WorkOrdersController: Controller
+
+public class WorkOrdersController : Controller
 {
-    private static readonly object Sync =new();
-    private static readonly List<WorkOrder> Orders =new()
+    private readonly FactoryOpsDbContext _db;
+
+    public WorkOrdersController(FactoryOpsDbContext db)
     {
-        new WorkOrder
-        {
-            Id =1001,
-            Title ="Staircase Formwork",
-            ProductType ="Fast Tread",
-            DueDate =DateTime.Today.AddDays(5),
-            Status ="In Progress"
-        },
-        new WorkOrder
-        {
-            Id=1002,
-            Title ="Floor Decking",
-            ProductType="BlueDeck",
-            Quantity=50,
-            DueDate =DateTime.Today.AddDays(2),
-            Status ="Pending"
-        },
-        new WorkOrder
-        {
-            Id =1003,
-            Title ="Door Frames",
-            ProductType ="SureFit",
-            Quantity=30,
-            DueDate =DateTime.Today.AddDays(7),
-            Status =" Completed"
-        }
-    };
-
-
-    [HttpGet]
-
-    public IActionResult Index()
-    {
-        lock(Sync)
-        {
-            return View(Orders.OrderBy(x=> x.Id).ToList());
-        }
+        _db = db;
     }
 
+    // GET: /WorkOrders
+    [HttpGet]
+    public async Task<IActionResult> Index()
+    {
+        var orders = await _db.WorkOrders
+            .OrderBy(x => x.Id)
+            .ToListAsync();
 
+        return View(orders);
+    }
+
+    // POST: /WorkOrders/Create
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public IActionResult Create(
+    public async Task<IActionResult> Create(
         string productType,
         int quantity,
         DateTime dueDate)
     {
-        string[] products=
+        string[] products =
         {
-            "Fast Thread", "BlueDeck","SureFit"
+            "Fast Tread", "BlueDeck", "SureFit"
         };
 
-        if(!products.Contains(productType) ||quantity<=0 || dueDate.Date<DateTime.Today)
+        if (!products.Contains(productType) ||
+            quantity <= 0 ||
+            dueDate.Date < DateTime.Today)
         {
             return BadRequest("Invalid order details.");
         }
-        
-        lock (Sync)
+
+        var order = new WorkOrder
         {
-            int nextId =Orders.Max(x=> x.Id)+1;
-            Orders.Add(new WorkOrder
-            {
-                Id= nextId,
-                Title =$"Production -{productType}",
-                ProductType =productType,
-                Quantity=quantity,
-                DueDate=dueDate,
-                Status="Pending"
-
-
-
-
-
-
-            }
-            
-            
-            
-            
-            
-            );
-        }
-        
-        return RedirectToAction(nameof(Index));
-
-    }
-
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    public IActionResult UpdateStatus(int id, string status)
-    {
-        string[] allowed=
-        {
-            "Pending", "In Progress","Completed"
+            Title = $"Production - {productType}",
+            ProductType = productType,
+            Quantity = quantity,
+            DueDate = dueDate,
+            Status = "Pending"
         };
 
+        _db.WorkOrders.Add(order);
+        await _db.SaveChangesAsync();
 
-        if (!allowed.Contains(status))
-        {
-            return BadRequest("Invalid status.");
-        }
-        lock(Sync)
-        {
-            
-            var order = Orders.FirstOrDefault(x=>x.Id == id);
-
-            if (order ==null)
-                return NotFound();
-
-            order.Status =status;
-        }
         return RedirectToAction(nameof(Index));
     }
 
+    // POST: /WorkOrders/UpdateStatus
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> UpdateStatus(
+        int id,
+        string status)
+    {
+        string[] allowed =
+        {
+            "Pending", "In Progress", "Completed"
+        };
 
+        if (!allowed.Contains(status))
+            return BadRequest("Invalid status.");
 
+        var order = await _db.WorkOrders.FindAsync(id);
+
+        if (order == null)
+            return NotFound();
+
+        order.Status = status;
+
+        await _db.SaveChangesAsync();
+
+        return RedirectToAction(nameof(Index));
+    }
 }

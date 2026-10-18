@@ -1,7 +1,13 @@
+using Microsoft.EntityFrameworkCore;
+using FactoryOps.Web.Data;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddControllersWithViews();
+builder.Services.AddDbContext<FactoryOpsDbContext>(
+    options => options.UseNpgsql(
+        builder.Configuration.GetConnectionString("FactoryOps")));
 
 var app = builder.Build();
 
@@ -23,5 +29,11 @@ app.UseAuthorization();
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider
+        .GetRequiredService<FactoryOpsDbContext>();
 
+    db.Database.EnsureCreated();
+}
 app.Run();

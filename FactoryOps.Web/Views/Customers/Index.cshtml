@@ -1,0 +1,156 @@
+@model List<FactoryOps.Web.Models.Customer>
+
+@{
+    ViewData["Title"] = "Customer Management";
+}
+
+<div class="container mt-4">
+    <h2>Customer Management</h2>
+    <p class="text-muted">Manage customers and their delivery sites.</p>
+
+    <details class="card mb-4">
+        <summary class="card-header p-3" style="cursor:pointer"><strong>Add New Customer</strong></summary>
+        <div class="card-body">
+            <form asp-controller="Customers" asp-action="Create" method="post">
+                @Html.AntiForgeryToken()
+                <div class="row g-3">
+                    <div class="col-md-6"><label class="form-label">Company Name *</label><input name="CompanyName" class="form-control" required /></div>
+                    <div class="col-md-6"><label class="form-label">Contact Name</label><input name="ContactName" class="form-control" /></div>
+                    <div class="col-md-6"><label class="form-label">Phone</label><input name="Phone" class="form-control" /></div>
+                    <div class="col-md-6"><label class="form-label">Email</label><input name="Email" type="email" class="form-control" /></div>
+                    <div class="col-12"><label class="form-label">Billing Address</label><input name="BillingAddress" class="form-control" /></div>
+                    <div class="col-12"><label class="form-label">Notes</label><textarea name="Notes" class="form-control" rows="2"></textarea></div>
+                </div>
+                <button type="submit" class="btn btn-primary mt-3">Add Customer</button>
+            </form>
+
+            <details class="mt-4 border-top pt-3">
+                <summary class="text-secondary" style="cursor:pointer">Bulk Import from CSV (optional)</summary>
+                <div class="mt-3">
+                    <form asp-controller="Customers" asp-action="ImportCsv" method="post" enctype="multipart/form-data">
+                        @Html.AntiForgeryToken()
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-8"><label class="form-label" for="csvFile">CSV File</label><input id="csvFile" name="file" type="file" accept=".csv,text/csv" class="form-control" required /></div>
+                            <div class="col-md-4"><button class="btn btn-outline-secondary w-100" type="submit">Import CSV</button></div>
+                        </div>
+                    </form>
+                    <small class="text-muted">Up to 5 MB / 1,000 rows. Use demo data only for now.</small>
+                </div>
+            </details>
+        </div>
+    </details>
+
+    <section class="card mb-4">
+        <div class="card-header p-3"><strong>Customer Directory</strong> <span class="text-muted">(@Model.Count customers)</span></div>
+        <div class="card-body">
+            <label class="form-label" for="customerSearch">Search customers</label>
+            <input type="search" id="customerSearch" class="form-control mb-3"
+                   placeholder="Company, contact, phone, email or billing address..." />
+            <p id="customerNoResults" class="text-muted d-none">No matching customers.</p>
+
+            @foreach (var customer in Model)
+            {
+                <details class="customer-item border rounded mb-2" data-customer-id="@customer.Id"
+                         data-search="@(customer.CompanyName + " " + customer.ContactName + " " + customer.Phone + " " + customer.Email + " " + customer.BillingAddress)">
+                    <summary class="p-3" style="cursor:pointer">
+                        <strong>@customer.CompanyName</strong>
+                        <span class="text-muted ms-2">@customer.ContactName · @customer.Phone</span>
+                    </summary>
+                    <div class="px-3 pb-3 border-top">
+                        <div class="row g-2 my-2 small">
+                            <div class="col-md-6"><strong>Email:</strong> @customer.Email</div>
+                            <div class="col-md-6"><strong>Billing:</strong> @customer.BillingAddress</div>
+                        </div>
+                        <h6 class="mt-3">Construction Sites</h6>
+                        <p class="site-message text-muted small">Expand this customer to load sites.</p>
+                        <div class="site-list"></div>
+
+                        <details class="mt-3">
+                            <summary class="text-primary" style="cursor:pointer">+ Add Construction Site</summary>
+                            <form asp-controller="Customers" asp-action="AddSite" method="post" class="mt-3">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="customerId" value="@customer.Id" />
+                                <div class="row g-2">
+                                    <div class="col-md-6"><input name="siteName" class="form-control" placeholder="Site name *" required /></div>
+                                    <div class="col-md-6"><input name="address" class="form-control" placeholder="Street address *" required /></div>
+                                    <div class="col-md-4"><input name="suburb" class="form-control" placeholder="Suburb" /></div>
+                                    <div class="col-md-4"><input name="state" class="form-control" value="NSW" placeholder="State" /></div>
+                                    <div class="col-md-4"><input name="postcode" class="form-control" placeholder="Postcode" /></div>
+                                    <div class="col-md-6"><input name="contactName" class="form-control" placeholder="Site contact name" /></div>
+                                    <div class="col-md-6"><input name="contactPhone" class="form-control" placeholder="Site contact phone" /></div>
+                                </div>
+                                <button type="submit" class="btn btn-outline-primary mt-3">Add Site</button>
+                            </form>
+                        </details>
+                    </div>
+                </details>
+            }
+            @if (!Model.Any())
+            {
+                <p class="text-muted">No customers yet.</p>
+            }
+        </div>
+    </section>
+</div>
+
+<script>
+(() => {
+    const directory = document.querySelectorAll('.customer-item');
+    const search = document.getElementById('customerSearch');
+    const empty = document.getElementById('customerNoResults');
+    const sitesUrl = '@Url.Action("Sites", "Customers")';
+
+    search.addEventListener('input', () => {
+        const keyword = search.value.toLocaleLowerCase().trim();
+        let visible = 0;
+        directory.forEach(item => {
+            const matches = item.dataset.search.toLocaleLowerCase().includes(keyword);
+            item.hidden = !matches;
+            if (matches) visible++;
+        });
+        empty.classList.toggle('d-none', visible > 0 || directory.length === 0);
+    });
+
+    function field(value) {
+        const span = document.createElement('span');
+        span.textContent = value ?? '';
+        return span;
+    }
+
+    directory.forEach(item => {
+        item.addEventListener('toggle', async () => {
+            if (!item.open || item.dataset.loaded === 'true') return;
+            const message = item.querySelector('.site-message');
+            const list = item.querySelector('.site-list');
+            message.textContent = 'Loading sites...';
+            try {
+                const url = new URL(sitesUrl, window.location.href);
+                url.searchParams.set('customerId', item.dataset.customerId);
+                const response = await fetch(url, { headers: { 'Accept': 'application/json' } });
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                const sites = await response.json();
+                list.replaceChildren();
+                for (const site of sites) {
+                    const container = document.createElement('div');
+                    container.className = 'border rounded p-2 mb-2';
+                    const heading = document.createElement('div');
+                    heading.className = 'fw-semibold';
+                    heading.append(field(site.siteName));
+                    const address = document.createElement('div');
+                    address.className = 'text-muted small';
+                    address.append(field([site.address, site.suburb, site.state, site.postcode].filter(Boolean).join(', ')));
+                    const details = document.createElement('div');
+                    details.className = 'small';
+                    details.append(field([site.contactName, site.contactPhone, site.status].filter(Boolean).join(' · ')));
+                    container.append(heading, address, details);
+                    list.append(container);
+                }
+                message.textContent = sites.length ? `${sites.length} site(s)` : 'No construction sites yet.';
+                item.dataset.loaded = 'true';
+            } catch (e) {
+                message.textContent = 'Could not load sites. Close and reopen to retry.';
+            }
+        });
+    });
+})();
+</script>
