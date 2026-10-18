@@ -18,6 +18,7 @@ public class FactoryOpsDbContext : DbContext
 
     public DbSet<ConstructionSite> ConstructionSites
         => Set<ConstructionSite>();
+    public DbSet<WorkOrderItem> WorkOrderItems => Set<WorkOrderItem>();
     protected override void OnModelCreating(
     ModelBuilder modelBuilder)
     {
