@@ -8,10 +8,45 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_HTTP_PORTS: 8080
+      KnowledgeService__BaseUrl: "http://ai:8000"
+      KnowledgeService__ApiKey: "${FACTORYOPS_AI_KEY:-}"
       ConnectionStrings__FactoryOps: "Host=db;Port=5432;Database=factoryops;Username=factoryops;Password=${POSTGRES_PASSWORD:?Password required}"
     depends_on:
       db:
         condition: service_healthy
+
+  ai:
+    build:
+      context: ./ai
+    environment:
+      FACTORYOPS_AI_KEY: "${FACTORYOPS_AI_KEY:?Run python tools/configure_ai.py}"
+      KNOWLEDGE_DB_HOST: knowledge-db
+      KNOWLEDGE_DB_NAME: knowledge
+      KNOWLEDGE_DB_USER: knowledge
+      KNOWLEDGE_DB_PASSWORD: "${KNOWLEDGE_POSTGRES_PASSWORD:?Run python tools/configure_ai.py}"
+      CATALOG_API_URL: "http://web:8080/internal/catalog"
+    depends_on:
+      knowledge-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+
+  knowledge-db:
+    image: pgvector/pgvector:0.8.7-pg16
+    environment:
+      POSTGRES_DB: knowledge
+      POSTGRES_USER: knowledge
+      POSTGRES_PASSWORD: "${KNOWLEDGE_POSTGRES_PASSWORD:?Run python tools/configure_ai.py}"
+    volumes:
+      - knowledge_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U knowledge -d knowledge"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   db:
     image: postgres:16
@@ -29,3 +64,4 @@ services:
 
 volumes:
   postgres_data:
+  knowledge_data:

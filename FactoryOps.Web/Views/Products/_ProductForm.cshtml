@@ -1,0 +1,31 @@
+@model FactoryOps.Web.Models.ProductForm
+@{ var editing = ViewData["IsEditing"] is true; }
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4"><h2>@ViewData["Title"]</h2><a asp-action="Index" class="btn btn-outline-secondary">Back to Catalog</a></div>
+    <div class="card"><div class="card-body">
+        @if (ViewData["ProductIsDemo"] is true) { <div class="alert alert-warning">Demo product: the SKU, ordering unit and aliases are examples. Confirm actual ordering details with the supplier.</div> }
+        @if (ViewData["ProductSource"] is string source && source.StartsWith("https://")) { <p><a href="@source" target="_blank" rel="noopener noreferrer">Public product source</a></p> }
+        <form id="productForm" asp-action="@(editing ? "Edit" : "Create")" asp-route-id="@(editing ? ViewContext.RouteData.Values["id"] : null)" method="post">
+            <input asp-for="Version" type="hidden" />
+            <div asp-validation-summary="All" class="text-danger" role="alert"></div>
+            <div class="row g-3">
+                <div class="col-md-4"><label asp-for="Sku" class="form-label">SKU / Product Code *</label><input asp-for="Sku" class="form-control" required maxlength="64" /><div class="form-text">Unique code. Saved in uppercase.</div></div>
+                <div class="col-md-8"><label asp-for="Name" class="form-label">Product Name *</label><input asp-for="Name" class="form-control" required maxlength="200" /></div>
+                <div class="col-md-6"><label asp-for="Category" class="form-label">Category</label><input asp-for="Category" class="form-control" maxlength="100" /></div>
+                <div class="col-md-6"><label asp-for="UnitOfMeasure" class="form-label">Unit of Measure *</label><input asp-for="UnitOfMeasure" class="form-control" required maxlength="32" placeholder="each, metre, sheet, box..." /></div>
+                <div class="col-12"><label asp-for="Description" class="form-label">Description</label><textarea asp-for="Description" class="form-control" rows="3" maxlength="4000"></textarea></div>
+                <div class="col-12"><label asp-for="Dimensions" class="form-label">Dimensions (Optional)</label><input asp-for="Dimensions" class="form-control" maxlength="500" placeholder="Include units, for example 2400 x 1200 x 19 mm" /></div>
+                <div class="col-12"><label asp-for="Specifications" class="form-label">Specifications (Optional)</label><textarea asp-for="Specifications" class="form-control" rows="3" maxlength="4000"></textarea></div>
+                <div class="col-12"><label asp-for="Packaging" class="form-label">Packaging (Optional)</label><textarea asp-for="Packaging" class="form-control" rows="2" maxlength="1000"></textarea></div>
+                <div class="col-12"><label asp-for="Aliases" class="form-label">Aliases / Abbreviations</label><textarea asp-for="Aliases" class="form-control" rows="3" maxlength="20000" placeholder="One alias per line, or separate with |"></textarea><div class="form-text">Up to 100 aliases, each up to 200 characters. Shared aliases return all matching products.</div></div>
+                <div class="col-12"><div class="form-check"><input asp-for="IsActive" class="form-check-input" /><label asp-for="IsActive" class="form-check-label">Active — available for new order lines</label></div></div>
+            </div>
+            @if (editing)
+            {
+                <p class="text-muted small mt-3">Changing this product preserves the name, SKU and unit already recorded on existing order lines. Deactivate a product to stop new orders while keeping its history.</p>
+                <a asp-action="Edit" asp-route-id="@ViewContext.RouteData.Values["id"]">Reload saved product</a>
+            }
+            <div class="d-flex justify-content-end mt-4"><button type="submit" class="btn btn-primary">@(editing ? "Save Product" : "Create Product")</button></div>
+        </form>
+    </div></div>
+</div>

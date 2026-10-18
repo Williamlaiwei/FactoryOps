@@ -1,7 +1,8 @@
 namespace FactoryOps.Web.Models;
 
-public class WorkOrder
+public class WorkOrder : ICompanyRecord
 {
+    public string CompanyKey { get; set; } = "fti-demo";
     public int Id { get; set; }
     public string Title { get; set; } = "";
 

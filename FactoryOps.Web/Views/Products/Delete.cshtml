@@ -1,0 +1,16 @@
+@model FactoryOps.Web.Models.Product
+@{ ViewData["Title"] = "Delete Product"; var used = ViewData["IsUsed"] is true; }
+<div class="container mt-4"><h2>Delete Product</h2><div class="card mt-3"><div class="card-body">
+    <h5>@Model.Sku — @Model.Name</h5>
+    @if (used)
+    {
+        <div class="alert alert-warning">This product is used by an order and cannot be deleted. Deactivate it to remove it from new order choices.</div>
+        <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-primary">Edit / Deactivate</a>
+    }
+    else
+    {
+        <p>Delete this unused product and its aliases?</p>
+        <form asp-action="Delete" asp-route-id="@Model.Id" method="post" class="mb-3"><input type="hidden" name="version" value="@Model.Version" /><button type="submit" class="btn btn-danger">Delete Product</button></form>
+    }
+    <a asp-action="Index" class="btn btn-outline-secondary">Back to Catalog</a>
+</div></div></div>

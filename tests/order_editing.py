@@ -23,12 +23,14 @@ import uuid
 ROOT = Path(__file__).resolve().parents[1]
 DATABASE = "factoryops_phase1_" + uuid.uuid4().hex
 ENV = dict(os.environ, FACTORYOPS_TEST_DATABASE=DATABASE)
+KNOWLEDGE_DATABASE = "knowledge_test_" + uuid.uuid4().hex
+ENV["FACTORYOPS_KNOWLEDGE_TEST_DATABASE"] = KNOWLEDGE_DATABASE
 COMPOSE = ["docker", "compose", "-f", "compose.yaml", "-f", "compose.tests.yaml"]
 BASE = "http://127.0.0.1:" + ENV.get("FACTORYOPS_TEST_PORT", "18080")
 
 
 def command(args, **kwargs):
-    result = subprocess.run(args, cwd=ROOT, env=ENV, text=True, **kwargs)
+    result = subprocess.run(args, cwd=ROOT, env=ENV, text=True, encoding="utf-8", **kwargs)
     if result.returncode:
         raise RuntimeError(f"Command failed ({result.returncode}): {' '.join(args)}")
     return result
@@ -46,6 +48,11 @@ def rows(table, where="TRUE"):
     return json.loads(sql(
         f'SELECT coalesce(json_agg(t ORDER BY t."Id"), \'[]\'::json) '
         f'FROM (SELECT * FROM "{table}" WHERE {where}) t;'))
+
+
+def knowledge_sql(statement, database="postgres"):
+    return command(["docker", "compose", "exec", "-T", "knowledge-db", "psql", "-U", "knowledge", "-d", database,
+                    "-v", "ON_ERROR_STOP=1", "-t", "-A"], input=statement, stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout.strip()
 
 
 def development_fingerprint():
@@ -320,6 +327,8 @@ def main():
     baseline = development_fingerprint()
     created = False
     started = False
+    knowledge_created = False
+    knowledge_started = False
     try:
         assert re.fullmatch(r"factoryops_phase1_[a-f0-9]{32}", DATABASE)
         sql(f'CREATE DATABASE "{DATABASE}";', "postgres")
@@ -338,12 +347,37 @@ def main():
                     command(COMPOSE + ["logs", "--tail", "80", "order-tests"])
                     raise RuntimeError("Test app did not become ready")
                 time.sleep(1)
-        result = unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromTestCase(OrderEditingTests))
+        if "--knowledge" in sys.argv:
+            command(["docker", "compose", "up", "-d", "--wait", "knowledge-db"])
+            assert re.fullmatch(r"knowledge_test_[a-f0-9]{32}", KNOWLEDGE_DATABASE)
+            knowledge_sql(f'CREATE DATABASE "{KNOWLEDGE_DATABASE}";')
+            knowledge_created = True
+            knowledge_started = True
+            command(COMPOSE + ["up", "-d", "--build", "--no-deps", "knowledge-tests"])
+            command(COMPOSE + ["exec", "-T", "knowledge-tests", "python", "-m", "unittest", "discover", "-s", "tests", "-v"])
+            if "--browser" in sys.argv:
+                ENV["FACTORYOPS_TEST_BASE_URL"] = BASE
+                command(["node", "tests/knowledge.browser.cjs"])
+            return 0
+        if "--companies" in sys.argv:
+            from company_profiles import CompanyProfileTests
+            suite = unittest.defaultTestLoader.loadTestsFromTestCase(CompanyProfileTests)
+        elif "--catalog" in sys.argv:
+            from product_catalog import ProductCatalogTests
+            suite = unittest.defaultTestLoader.loadTestsFromTestCase(ProductCatalogTests)
+        else:
+            suite = unittest.defaultTestLoader.loadTestsFromTestCase(OrderEditingTests)
+        result = unittest.TextTestRunner(verbosity=2).run(suite)
         if result.wasSuccessful() and "--browser" in sys.argv:
             ENV["FACTORYOPS_TEST_BASE_URL"] = BASE
-            command(["node", "tests/order_editing.browser.cjs"])
+            script = "tests/product_catalog.browser.cjs" if "--catalog" in sys.argv else "tests/order_editing.browser.cjs"
+            command(["node", script])
         return 0 if result.wasSuccessful() else 1
     finally:
+        if knowledge_started:
+            command(COMPOSE + ["rm", "--stop", "--force", "knowledge-tests"], stdout=subprocess.PIPE)
+        if knowledge_created:
+            knowledge_sql(f'DROP DATABASE "{KNOWLEDGE_DATABASE}" WITH (FORCE);')
         if started:
             command(COMPOSE + ["rm", "--stop", "--force", "order-tests"], stdout=subprocess.PIPE)
         if created:

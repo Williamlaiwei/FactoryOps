@@ -1,4 +1,5 @@
 ﻿<!DOCTYPE html>
+@inject FactoryOps.Web.Services.CompanyContext Company
 <html lang="en">
 
 <head>
@@ -17,7 +18,7 @@
             <div class="container-fluid">
 
                 <a class="navbar-brand fw-bold" asp-controller="WorkOrders" asp-action="Index">
-                    FactoryOps
+                    @Company.Profile.Name
                 </a>
 
                 <div class="navbar-nav flex-row flex-wrap gap-3">
@@ -29,6 +30,9 @@
                     <a class="nav-link" asp-controller="Customers" asp-action="Index">
                         Customers
                     </a>
+                    <a class="nav-link" asp-controller="Products" asp-action="Index">Products</a>
+                    <a class="nav-link" asp-controller="Companies" asp-action="Index">Company</a>
+                    <a class="nav-link" asp-controller="Knowledge" asp-action="Index">AI Knowledge</a>
                     <a class="nav-link" asp-controller="WorkOrders" asp-action="New">
                         + Create Order
                     </a>

@@ -22,13 +22,18 @@ public class WorkOrderForm
     public Customer? SelectedCustomer { get; set; }
     [BindNever, ValidateNever]
     public List<ConstructionSite> AvailableSites { get; set; } = new();
+    [BindNever, ValidateNever]
+    public List<Product> AvailableProducts { get; set; } = new();
 }
 
 public class WorkOrderItemForm
 {
     public int? Id { get; set; }
-    [Required(ErrorMessage = "Select a product for every item.")]
-    public string ProductType { get; set; } = "";
+    public int? ProductId { get; set; }
+    // Accept original form clients by exact catalog name; new forms use ProductId.
+    public string? ProductType { get; set; }
+    [BindNever, ValidateNever]
+    public Product? SelectedProduct { get; set; }
     [Range(1, int.MaxValue, ErrorMessage = "Every quantity must be a positive whole number.")]
     public int Quantity { get; set; }
 }

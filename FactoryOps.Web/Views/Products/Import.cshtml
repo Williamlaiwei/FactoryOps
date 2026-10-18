@@ -1,0 +1,17 @@
+@model FactoryOps.Web.Models.ProductImportForm
+@{ ViewData["Title"] = "Import Products"; }
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4"><h2>Import Products</h2><a asp-action="Index" class="btn btn-outline-secondary">Back to Catalog</a></div>
+    <div class="card"><div class="card-body">
+        <p>Upload up to 1,000 new products in a UTF-8 CSV file (maximum 5 MB). All rows must be valid before anything is saved. Existing SKUs are rejected and are never overwritten.</p>
+        <p>Required columns: <strong>Sku, Name, UnitOfMeasure</strong>.</p>
+        <p>Optional columns: Description, Category, Dimensions, Specifications, Packaging, IsActive, Aliases. Use <code>true</code> or <code>false</code> for IsActive (blank defaults to true). Separate aliases with <code>|</code>.</p>
+        <a asp-action="CsvTemplate" class="btn btn-outline-primary mb-4">Download CSV Template</a>
+        <form asp-action="Import" method="post" enctype="multipart/form-data">
+            <div asp-validation-summary="All" class="text-danger" role="alert"></div>
+            <label asp-for="File" class="form-label">Product CSV</label><input asp-for="File" type="file" accept=".csv,text/csv" class="form-control" required />
+            <p class="form-text">After correcting errors, choose the file again and retry the import.</p>
+            <button type="submit" class="btn btn-primary mt-3">Import Products</button>
+        </form>
+    </div></div>
+</div>

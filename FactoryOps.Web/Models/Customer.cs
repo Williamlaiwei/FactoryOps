@@ -1,7 +1,8 @@
 namespace FactoryOps.Web.Models;
 
-public class Customer
+public class Customer : ICompanyRecord
 {
+    public string CompanyKey { get; set; } = "fti-demo";
     public int Id { get; set; }
 
     public string CompanyName { get; set; } = "";

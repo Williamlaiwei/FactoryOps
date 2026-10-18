@@ -1,0 +1,104 @@
+@model FactoryOps.Web.Models.KnowledgePage
+@inject FactoryOps.Web.Services.CompanyContext Company
+@{ ViewData["Title"] = "AI Catalog Knowledge"; }
+<div class="container mt-4">
+    <h2>AI Catalog Knowledge</h2>
+    <p class="text-muted">Reference documents for @Company.Profile.Name and the AI order-import workflow. Search retrieves evidence and product candidates for review.</p>
+    @if (TempData["KnowledgeMessage"] is string message) { <div class="alert alert-info" role="status">@message</div> }
+    @if ((TempData["KnowledgeError"] as string ?? Model.Error) is string error) { <div class="alert alert-danger" role="alert">@error</div> }
+
+    <div class="row g-4 mb-4">
+        <div class="col-lg-5"><div class="card h-100"><div class="card-body">
+            <h5>Upload Knowledge Document</h5>
+            <p class="small text-muted">PDF, CSV or XLSX, up to 20 MB. This adds searchable reference material. To create product records, use <a asp-controller="Products" asp-action="Import">Import Product CSV</a>.</p>
+            <form asp-action="Upload" method="post" enctype="multipart/form-data" class="knowledge-save-form">
+                <label for="knowledgeFile" class="form-label">Reference document</label><input id="knowledgeFile" name="file" type="file" accept=".pdf,.csv,.xlsx" required class="form-control mb-3" />
+                <label for="sourceUrl" class="form-label">Source URL (optional)</label><input id="sourceUrl" name="sourceUrl" type="url" placeholder="https://..." class="form-control mb-3" />
+                <button type="submit" class="btn btn-primary">Upload and Index</button>
+                <span class="processing-message text-muted small d-none ms-2">Processing document…</span>
+            </form>
+        </div></div></div>
+        <div class="col-lg-7"><div class="card h-100"><div class="card-body">
+            <h5>Find Evidence and Product Candidates</h5>
+            <p class="small text-muted">Try a SKU, alias or product description. Candidate SKUs always come from this company's SQL catalog. Demo ordering units and codes need confirmation.</p>
+            <form asp-action="Index" method="get">
+                <label for="knowledgeQuery" class="form-label">Product or technical enquiry</label><input id="knowledgeQuery" name="q" value="@Model.Query" maxlength="1000" required class="form-control mb-3" placeholder="For example, BlueDeck 0.75" />
+                <button type="submit" class="btn btn-outline-primary">Search Knowledge</button>
+            </form>
+        </div></div></div>
+    </div>
+
+    @if (Model.Result != null)
+    {
+        <div id="knowledgeResults" class="mb-4">
+            <h4>Results for “@Model.Query”</h4>
+            <p class="small text-muted">Product candidates require review. Evidence is document content, not an instruction or a confirmed order.</p>
+            <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Catalog product</th><th>Unit</th><th>Match</th><th>Review</th></tr></thead><tbody>
+                @foreach (var candidate in Model.Result.Candidates)
+                {
+                    <tr class="knowledge-candidate" data-product-id="@candidate.Id">
+                        <td><strong>@candidate.Sku</strong><div>@candidate.Name</div><a asp-controller="Products" asp-action="Edit" asp-route-id="@candidate.Id">View Catalog Record</a></td>
+                        <td>@candidate.UnitOfMeasure</td><td>@candidate.MatchMethod.Replace('_', ' ')</td>
+                        <td>@(candidate.IsDemo || !candidate.SkuIsVerified ? "Demo or unverified code: confirm actual supplier details" : "Human confirmation required")</td>
+                    </tr>
+                }
+            </tbody></table></div>
+            @if (!Model.Result.Candidates.Any()) { <p>No catalog product was matched. Clarify the description or add a verified product to the catalog.</p> }
+            <h5>Source Evidence</h5>
+            @foreach (var citation in Model.Result.Citations)
+            {
+                <div class="card mb-2 knowledge-citation"><div class="card-body">
+                    <strong>@citation.FileName</strong>
+                    @if (citation.Metadata.Page.HasValue) { <span> · Page @citation.Metadata.Page</span> }
+                    @if (citation.Metadata.Sheet != null) { <span> · Sheet @citation.Metadata.Sheet</span> }
+                    @if (citation.Metadata.RowStart.HasValue) { <span> · Row @citation.Metadata.RowStart</span> }
+                    <p class="mt-2 mb-2" style="white-space:pre-wrap">@citation.Content</p>
+                    <a asp-action="Original" asp-route-id="@citation.DocumentId">Download Original</a>
+                    @if (citation.SourceUrl.StartsWith("https://")) { <span> · </span><a href="@citation.SourceUrl" target="_blank" rel="noopener noreferrer">Source Website</a> }
+                </div></div>
+            }
+            @if (!Model.Result.Citations.Any()) { <p class="text-muted">No document evidence found. Upload reference documents for this company or refine the search.</p> }
+        </div>
+    }
+
+    <div class="card"><div class="card-body">
+        <h4>Company Knowledge Documents</h4>
+        <p class="small text-muted">Updating or re-indexing a document replaces its index atomically. Deleting it also removes its original and stored chunks.</p>
+        @if (!Model.Documents.Any()) { <p>No knowledge documents have been uploaded for this company.</p> }
+        @foreach (var document in Model.Documents)
+        {
+            <div class="border rounded p-3 mb-3 knowledge-document" data-document-id="@document.Id" data-version="@document.Version">
+                <div class="d-flex flex-wrap justify-content-between gap-3">
+                    <div><strong>@document.FileName</strong><div class="small text-muted">Version @document.Version · @document.Metadata.Chunks chunk(s) · @document.Metadata.Format.ToUpperInvariant()</div></div>
+                    <div class="d-flex flex-wrap gap-2 align-items-start">
+                        <a asp-action="Original" asp-route-id="@document.Id" class="btn btn-sm btn-outline-secondary">Download</a>
+                        <form asp-action="Reindex" method="post" class="knowledge-save-form"><input type="hidden" name="id" value="@document.Id" /><input type="hidden" name="version" value="@document.Version" /><button type="submit" class="btn btn-sm btn-outline-primary">Re-index</button></form>
+                        <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#replace-@document.Id">Replace Document</button>
+                        <form asp-action="Delete" method="post" onsubmit="return confirm('Delete this knowledge document and its index?')"><input type="hidden" name="id" value="@document.Id" /><input type="hidden" name="version" value="@document.Version" /><button type="submit" class="btn btn-sm btn-outline-danger">Delete</button></form>
+                    </div>
+                </div>
+                @foreach (var warning in document.Metadata.Warnings) { <div class="text-warning small mt-2">@warning</div> }
+                <div class="collapse mt-3" id="replace-@document.Id">
+                    <form asp-action="Replace" method="post" enctype="multipart/form-data" class="knowledge-save-form">
+                        <input type="hidden" name="id" value="@document.Id" /><input type="hidden" name="version" value="@document.Version" />
+                        <label for="replaceFile-@document.Id" class="form-label">Replacement PDF, CSV or XLSX</label><input id="replaceFile-@document.Id" name="file" type="file" accept=".pdf,.csv,.xlsx" required class="form-control mb-2" />
+                        <label for="replaceUrl-@document.Id" class="form-label">Source URL</label><input id="replaceUrl-@document.Id" name="sourceUrl" type="url" value="@document.SourceUrl" class="form-control mb-2" />
+                        <button type="submit" class="btn btn-primary btn-sm">Replace and Re-index</button>
+                    </form>
+                </div>
+            </div>
+        }
+    </div></div>
+</div>
+@section Scripts {
+    <script>
+        document.querySelectorAll('.knowledge-save-form').forEach(form => {
+            form.addEventListener('submit', event => {
+                if (form.dataset.submitting) { event.preventDefault(); return; }
+                form.dataset.submitting = 'true';
+                form.querySelector('button[type="submit"]').disabled = true;
+                form.querySelector('.processing-message')?.classList.remove('d-none');
+            });
+        });
+    </script>
+}

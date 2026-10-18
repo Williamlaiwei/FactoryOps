@@ -18,9 +18,13 @@ const { chromium } = require("../artifacts/browser-tools/node_modules/playwright
         await page.locator('#ConstructionSiteId option[value="201"]').waitFor({ state: "attached" });
         await page.locator("#ConstructionSiteId").selectOption("201");
         const rows = page.locator("#orderItemsContainer .order-item");
+        async function selectProduct(row, name) {
+            const option = row.locator("option").filter({ hasText: `— ${name} (` });
+            await row.locator("select").selectOption(await option.getAttribute("value"));
+        }
         for (const [index, product] of ["Fast Tread", "BlueDeck", "SureFit"].entries()) {
             if (index) await page.locator("#addItemButton").click();
-            await rows.nth(index).locator("select").selectOption(product);
+            await selectProduct(rows.nth(index), product);
             await rows.nth(index).locator('input[data-field="Quantity"]').fill(String((index + 1) * 10));
         }
         await page.locator("#DueDate").fill(future(10));
@@ -35,7 +39,7 @@ const { chromium } = require("../artifacts/browser-tools/node_modules/playwright
         assert.equal(await rows.count(), 3);
         await rows.nth(0).locator('input[data-field="Quantity"]').fill("75");
         await page.locator("#addItemButton").click();
-        await rows.nth(3).locator("select").selectOption("BlueDeck");
+        await selectProduct(rows.nth(3), "BlueDeck");
         await rows.nth(3).locator('input[data-field="Quantity"]').fill("45");
         await rows.nth(1).locator(".remove-item-btn").click();
         assert.equal(await rows.count(), 3);
@@ -72,7 +76,7 @@ const { chromium } = require("../artifacts/browser-tools/node_modules/playwright
         await page.locator("#saveOrderButton").click();
         assert.match(await page.locator("#orderMessage").innerText(), /Add at least one valid order item/);
         await page.locator("#addItemButton").click();
-        await rows.first().locator("select").selectOption("SureFit");
+        await selectProduct(rows.first(), "SureFit");
         await rows.first().locator('input[data-field="Quantity"]').fill("9");
         await Promise.all([page.waitForURL(base + "/WorkOrders"), page.locator("#saveOrderButton").click()]);
         await page.goto(base + editPath);

@@ -12,6 +12,14 @@
     const message = document.getElementById("orderMessage");
     const items = document.getElementById("orderItemsContainer");
     const save = document.getElementById("saveOrderButton");
+    const productFilter = document.getElementById("productFilter");
+    function filterProducts() {
+        const query = productFilter.value.trim().toLowerCase();
+        items.querySelectorAll("select[data-field='ProductId'] option").forEach(option => {
+            option.hidden = Boolean(option.value) && !option.selected && !(option.dataset.search || "").includes(query);
+        });
+    }
+    productFilter.addEventListener("input", filterProducts);
     let timer;
     let searchRequest;
     let siteRequest;
@@ -114,6 +122,7 @@
     document.getElementById("addItemButton").addEventListener("click", () => {
         items.appendChild(document.getElementById("orderItemTemplate").content.cloneNode(true));
         reindexItems();
+        filterProducts();
         items.lastElementChild.querySelector("select").focus();
     });
     items.addEventListener("click", event => {

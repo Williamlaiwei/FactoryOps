@@ -29,7 +29,8 @@ public class WorkOrdersController : Controller
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Create(string productType, int quantity, DateTime dueDate)
     {
-        if (!ModelState.IsValid || !OrderProducts.Allowed.Contains(productType) ||
+        var matches = await _db.Products.Where(x => x.IsActive && x.Name == productType).ToListAsync();
+        if (!ModelState.IsValid || matches.Count != 1 ||
             quantity <= 0 || dueDate.Date < DateTime.Today)
             return BadRequest("Invalid order details.");
 
@@ -37,7 +38,8 @@ public class WorkOrdersController : Controller
         {
             Title = $"Production - {productType}", ProductType = productType,
             Quantity = quantity, DueDate = dueDate.Date, Status = "Pending",
-            Items = new() { new() { ProductType = productType, Quantity = quantity } }
+            Items = new() { new() { ProductType = matches[0].Name, ProductId = matches[0].Id,
+                ProductSkuSnapshot = matches[0].Sku, UnitOfMeasureSnapshot = matches[0].UnitOfMeasure, Quantity = quantity } }
         });
         await _db.SaveChangesAsync();
         return RedirectToAction(nameof(Index));
@@ -63,10 +65,12 @@ public class WorkOrdersController : Controller
     }
 
     [HttpGet]
-    public IActionResult New() => View(new WorkOrderForm
+    public async Task<IActionResult> New()
     {
-        Items = new() { new() }
-    });
+        var model = new WorkOrderForm { Items = new() { new() } };
+        await LoadChoices(model);
+        return View(model);
+    }
 
     [HttpGet]
     public async Task<IActionResult> Edit(int id)
@@ -82,7 +86,7 @@ public class WorkOrdersController : Controller
             DueDate = order.DueDate, DeliveryInstructions = order.DeliveryInstructions,
             Items = order.Items.OrderBy(x => x.Id).Select(x => new WorkOrderItemForm
             {
-                Id = x.Id, ProductType = x.ProductType, Quantity = x.Quantity
+                Id = x.Id, ProductId = x.ProductId, ProductType = x.ProductType, Quantity = x.Quantity
             }).ToList()
         };
         // Older orders have their only line stored in the legacy header columns.
@@ -102,9 +106,11 @@ public class WorkOrdersController : Controller
 
         var order = new WorkOrder { Status = "Pending" };
         ApplyHeader(order, model, address!);
-        order.Items = model.Items.Select(x => new WorkOrderItem
+        order.Items = model.Items.Select(x =>
         {
-            ProductType = x.ProductType, Quantity = x.Quantity
+            var item = new WorkOrderItem();
+            ApplyItem(item, x);
+            return item;
         }).ToList();
         _db.WorkOrders.Add(order);
         try
@@ -127,7 +133,7 @@ public class WorkOrdersController : Controller
         var order = await _db.WorkOrders.Include(x => x.Items).SingleOrDefaultAsync(x => x.Id == id);
         if (order == null) return NotFound();
 
-        var address = await ValidateOrder(model, order.DueDate);
+        var address = await ValidateOrder(model, order);
         if (model.Version != order.Version)
             ModelState.AddModelError("", "This order has changed since you opened it. Reload the order before saving.");
         var ids = model.Items.Where(x => x.Id.HasValue).Select(x => x.Id!.Value).ToList();
@@ -143,8 +149,7 @@ public class WorkOrdersController : Controller
             var item = input.Id.HasValue
                 ? order.Items.Single(x => x.Id == input.Id.Value)
                 : new WorkOrderItem();
-            item.ProductType = input.ProductType;
-            item.Quantity = input.Quantity;
+            ApplyItem(item, input);
             if (!input.Id.HasValue) order.Items.Add(item);
         }
         // xmin also catches changes made between loading the order and saving it.
@@ -171,16 +176,27 @@ public class WorkOrdersController : Controller
         return RedirectToAction(nameof(Index));
     }
 
-    private async Task<string?> ValidateOrder(WorkOrderForm model, DateTime? originalDate = null)
+    private async Task<string?> ValidateOrder(WorkOrderForm model, WorkOrder? original = null)
     {
         model.Items ??= new();
+        var products = await _db.Products.AsNoTracking().ToListAsync();
         if (model.Items.Count == 0)
             ModelState.AddModelError(nameof(model.Items), "Add at least one valid order item.");
         for (var i = 0; i < model.Items.Count; i++)
         {
             var item = model.Items[i];
-            if (!OrderProducts.Allowed.Contains(item.ProductType))
-                ModelState.AddModelError($"Items[{i}].ProductType", $"Item {i + 1}: select a valid product.");
+            var previous = original?.Items.SingleOrDefault(x => x.Id == item.Id);
+            var matches = item.ProductId.HasValue
+                ? products.Where(x => x.Id == item.ProductId.Value).ToList()
+                : products.Where(x => x.Name == item.ProductType).ToList();
+            if (matches.Count != 1 || (!matches[0].IsActive && previous?.ProductId != matches[0].Id))
+                ModelState.AddModelError($"Items[{i}].ProductId", $"Item {i + 1}: select a valid product that is active. An inactive product may only be kept on its existing line.");
+            else
+            {
+                item.SelectedProduct = matches[0];
+                item.ProductId = matches[0].Id;
+                item.ProductType = previous?.ProductId == item.ProductId ? previous.ProductType : matches[0].Name;
+            }
             if (item.Quantity <= 0)
                 ModelState.AddModelError($"Items[{i}].Quantity", $"Item {i + 1}: quantity must be positive.");
         }
@@ -188,7 +204,7 @@ public class WorkOrdersController : Controller
             ModelState.AddModelError(nameof(model.Items), "The total quantity is too large.");
         if (!model.DueDate.HasValue || model.DueDate.Value == default)
             ModelState.AddModelError(nameof(model.DueDate), "Enter a valid requested delivery date.");
-        else if (model.DueDate.Value.Date < DateTime.Today && model.DueDate.Value.Date != originalDate?.Date)
+        else if (model.DueDate.Value.Date < DateTime.Today && model.DueDate.Value.Date != original?.DueDate.Date)
             ModelState.AddModelError(nameof(model.DueDate), "A new delivery date cannot be in the past.");
 
         var customer = await _db.Customers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == model.CustomerId);
@@ -226,12 +242,21 @@ public class WorkOrdersController : Controller
         order.DeliveryAddressSnapshot = address;
         order.DeliveryInstructions = model.DeliveryInstructions ?? "";
         order.DueDate = model.DueDate!.Value.Date;
-        order.ProductType = model.Items[0].ProductType;
+        order.ProductType = model.Items[0].ProductType!;
         order.Quantity = (int)model.Items.Sum(x => (long)x.Quantity);
     }
 
     private async Task LoadChoices(WorkOrderForm model)
     {
+        // Include inactive products only for the lines already carrying them.
+        var selectedIds = model.Items.Where(x => x.ProductId.HasValue).Select(x => x.ProductId!.Value).ToList();
+        model.AvailableProducts = await _db.Products.AsNoTracking().Include(x => x.Aliases)
+            .Where(x => x.IsActive || selectedIds.Contains(x.Id)).OrderBy(x => x.Name).ThenBy(x => x.Sku).ToListAsync();
+        foreach (var item in model.Items.Where(x => !x.ProductId.HasValue && !string.IsNullOrEmpty(x.ProductType)))
+        {
+            var matches = model.AvailableProducts.Where(x => x.Name == item.ProductType).ToList();
+            if (matches.Count == 1) item.ProductId = matches[0].Id;
+        }
         model.SelectedCustomer = await _db.Customers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == model.CustomerId);
         model.AvailableSites = await _db.ConstructionSites.AsNoTracking()
             .Where(x => x.CustomerId == model.CustomerId && x.Status == "Active")
@@ -242,5 +267,17 @@ public class WorkOrdersController : Controller
     {
         await LoadChoices(model);
         return View(view, model);
+    }
+
+    private static void ApplyItem(WorkOrderItem item, WorkOrderItemForm input)
+    {
+        if (item.Id == 0 || item.ProductId != input.ProductId)
+        {
+            item.ProductId = input.SelectedProduct!.Id;
+            item.ProductType = input.SelectedProduct.Name;
+            item.ProductSkuSnapshot = input.SelectedProduct.Sku;
+            item.UnitOfMeasureSnapshot = input.SelectedProduct.UnitOfMeasure;
+        }
+        item.Quantity = input.Quantity;
     }
 }

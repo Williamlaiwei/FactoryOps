@@ -53,21 +53,31 @@
             <p id="companyMessage" class="text-muted small d-none">The customer's saved billing address will be used for delivery.</p>
 
             <hr /><h5>3. Order Details</h5>
+            <label for="productFilter" class="form-label">Find catalog products</label>
+            <input id="productFilter" type="search" class="form-control" placeholder="Filter product choices by SKU, name or alias..." />
+            @if (!Model.AvailableProducts.Any(x => x.IsActive))
+            {
+                <p class="text-warning mt-2">No active products are available. <a asp-controller="Products" asp-action="Create">Add a product</a> before adding order lines.</p>
+            }
             <div id="orderItemsContainer" class="mt-3">
                 @for (var i = 0; i < Model.Items.Count; i++)
                 {
                     <div class="order-item row g-3 align-items-end mb-3">
                         <input asp-for="Items[i].Id" type="hidden" data-field="Id" />
                         <div class="col-md-6">
-                            <label asp-for="Items[i].ProductType" class="form-label">Product *</label>
-                            <select asp-for="Items[i].ProductType" data-field="ProductType" class="form-select" required>
+                            <label asp-for="Items[i].ProductId" class="form-label">Product *</label>
+                            <select asp-for="Items[i].ProductId" data-field="ProductId" class="form-select" required>
                                 <option value="">Select product...</option>
-                                @foreach (var product in OrderProducts.Allowed)
+                                @foreach (var product in Model.AvailableProducts.Where(x => x.IsActive || x.Id == Model.Items[i].ProductId))
                                 {
-                                    <option value="@product">@product</option>
+                                    <option value="@product.Id" data-search="@($"{product.Sku} {product.Name} {string.Join(" ", product.Aliases.Select(a => a.Value))}".ToLowerInvariant())">@product.Sku — @product.Name (@product.UnitOfMeasure)@(!product.IsActive ? " [inactive, existing line only]" : "")</option>
                                 }
                             </select>
-                            <span asp-validation-for="Items[i].ProductType" class="text-danger"></span>
+                            <span asp-validation-for="Items[i].ProductId" class="text-danger"></span>
+                            @if (!string.IsNullOrEmpty(Model.Items[i].ProductType))
+                            {
+                                <div class="form-text">Recorded product: @Model.Items[i].ProductType. Keeping this product preserves its recorded details.</div>
+                            }
                         </div>
                         <div class="col-md-4">
                             <label asp-for="Items[i].Quantity" class="form-label">Quantity *</label>
@@ -108,12 +118,12 @@
     <div class="order-item row g-3 align-items-end mb-3">
         <input data-field="Id" type="hidden" />
         <div class="col-md-6">
-            <label class="form-label" data-label="ProductType">Product *</label>
-            <select data-field="ProductType" class="form-select" required>
+            <label class="form-label" data-label="ProductId">Product *</label>
+            <select data-field="ProductId" class="form-select" required>
                 <option value="">Select product...</option>
-                @foreach (var product in OrderProducts.Allowed)
+                @foreach (var product in Model.AvailableProducts.Where(x => x.IsActive))
                 {
-                    <option value="@product">@product</option>
+                    <option value="@product.Id" data-search="@($"{product.Sku} {product.Name} {string.Join(" ", product.Aliases.Select(a => a.Value))}".ToLowerInvariant())">@product.Sku — @product.Name (@product.UnitOfMeasure)</option>
                 }
             </select>
         </div>

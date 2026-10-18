@@ -9,7 +9,20 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_HTTP_PORTS: 8080
+      KnowledgeService__BaseUrl: "http://knowledge-tests:8000"
+      KnowledgeService__ApiKey: "${FACTORYOPS_AI_KEY:-}"
       ConnectionStrings__FactoryOps: "Host=db;Port=5432;Database=${FACTORYOPS_TEST_DATABASE:?Run tests/order_editing.py};Username=factoryops;Password=${POSTGRES_PASSWORD:?Password required}"
     depends_on:
       db:
         condition: service_healthy
+
+  knowledge-tests:
+    build:
+      context: ./ai
+    environment:
+      FACTORYOPS_AI_KEY: "${FACTORYOPS_AI_KEY:?Run python tools/configure_ai.py}"
+      KNOWLEDGE_DB_HOST: knowledge-db
+      KNOWLEDGE_DB_NAME: "${FACTORYOPS_KNOWLEDGE_TEST_DATABASE:-knowledge_test_unused}"
+      KNOWLEDGE_DB_USER: knowledge
+      KNOWLEDGE_DB_PASSWORD: "${KNOWLEDGE_POSTGRES_PASSWORD:?Run python tools/configure_ai.py}"
+      CATALOG_API_URL: "http://order-tests:8080/internal/catalog"

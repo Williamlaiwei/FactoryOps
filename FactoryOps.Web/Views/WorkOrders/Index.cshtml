@@ -102,7 +102,7 @@
                                                         {
                                                             @foreach (var item in items)
                                                             {
-                                                                <li>@item.ProductType — Quantity: @item.Quantity</li>
+                                                                <li>@item.ProductType — Quantity: @item.Quantity @item.UnitOfMeasureSnapshot @(string.IsNullOrEmpty(item.ProductSkuSnapshot) ? "" : $"(SKU: {item.ProductSkuSnapshot})")</li>
                                                             }
                                                         }
                                                         else
