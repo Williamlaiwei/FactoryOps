@@ -22,6 +22,17 @@ public class FactoryOpsDbContext : DbContext
     protected override void OnModelCreating(
     ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<WorkOrder>().Property(x => x.Version).IsRowVersion();
+
+        modelBuilder.Entity<WorkOrderItem>()
+            .ToTable(t => t.HasCheckConstraint("CK_WorkOrderItems_Quantity_Positive", "\"Quantity\" > 0"));
+
+        modelBuilder.Entity<WorkOrderItem>()
+            .HasOne(x => x.WorkOrder)
+            .WithMany(x => x.Items)
+            .HasForeignKey(x => x.WorkOrderId)
+            .OnDelete(DeleteBehavior.Cascade);
+
         modelBuilder.Entity<WorkOrder>()
             .Property(x => x.DueDate)
             .HasColumnType("date");

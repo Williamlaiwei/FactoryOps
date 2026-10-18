@@ -1,0 +1,15 @@
+# Used only by tests/order_editing.py, with its own temporary database and web port.
+services:
+  order-tests:
+    build:
+      context: .
+      dockerfile: dockerfile
+    ports:
+      - "127.0.0.1:${FACTORYOPS_TEST_PORT:-18080}:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: 8080
+      ConnectionStrings__FactoryOps: "Host=db;Port=5432;Database=${FACTORYOPS_TEST_DATABASE:?Run tests/order_editing.py};Username=factoryops;Password=${POSTGRES_PASSWORD:?Password required}"
+    depends_on:
+      db:
+        condition: service_healthy

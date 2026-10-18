@@ -1,139 +1,152 @@
 @model List<FactoryOps.Web.Models.WorkOrder>
-
 @{
-    ViewData["Title"] = "Production Orders";
-
+    ViewData["Title"] = "Work Orders";
     int active = Model.Count(x => x.Status == "In Progress");
     int completed = Model.Count(x => x.Status == "Completed");
     int pending = Model.Count(x => x.Status == "Pending");
 }
 
-<h1>FactoryOps</h1>
-<p class="text-muted">
-    Manufacturing Operations Dashboard — Demo Data
-</p>
-
-<div class="row mb-4">
-    <div class="col-md-4">
-        <div class="card p-3">
-            <h6>Total Orders</h6>
-            <h2>@Model.Count</h2>
+<div class="container mt-4">
+    @if (TempData["OrderMessage"] is string message)
+    {
+        <div class="alert alert-info" role="status">@message</div>
+    }
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div>
+            <h2 class="mb-1">Work Orders</h2>
+            <p class="text-muted mb-0">Manage customer orders, delivery details and production status.</p>
         </div>
+        <a asp-controller="WorkOrders" asp-action="New" class="btn btn-primary">+ Create Order</a>
     </div>
 
-    <div class="col-md-4">
-        <div class="card p-3">
-            <h6>In Progress</h6>
-            <h2>@active</h2>
-        </div>
+    <div class="row g-3 mb-4">
+        <div class="col-md-3"><div class="card p-3"><div class="text-muted">Total Orders</div><h3 class="mb-0">@Model.Count</h3></div></div>
+        <div class="col-md-3"><div class="card p-3"><div class="text-muted">Pending</div><h3 class="mb-0">@pending</h3></div></div>
+        <div class="col-md-3"><div class="card p-3"><div class="text-muted">In Progress</div><h3 class="mb-0">@active</h3></div></div>
+        <div class="col-md-3"><div class="card p-3"><div class="text-muted">Completed</div><h3 class="mb-0">@completed</h3></div></div>
     </div>
 
-    <div class="col-md-4">
-        <div class="card p-3">
-            <h6>Completed</h6>
-            <h2>@completed</h2>
+    <div class="card">
+        <div class="card-body">
+            <label for="orderSearch" class="form-label">Search orders</label>
+            <input id="orderSearch" type="search" class="form-control mb-3"
+                   placeholder="Order ID, customer, site, product or address..." autocomplete="off" />
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>Order</th>
+                            <th>Customer / Site</th>
+                            <th>Items</th>
+                            <th>Delivery Date</th>
+                            <th>Status</th>
+                            <th>Details</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ordersTableBody">
+                        @foreach (var order in Model)
+                        {
+                            var items = order.Items?.OrderBy(i => i.Id).ToList() ?? new List<FactoryOps.Web.Models.WorkOrderItem>();
+                            var customerName = order.Customer?.CompanyName ?? "Legacy order";
+                            var siteName = order.ConstructionSite?.SiteName ?? (order.DeliveryType == "Company" ? "Company address" : "Not assigned");
+                            var itemSummary = items.Count > 0
+                                ? string.Join(", ", items.Select(i => $"{i.ProductType} × {i.Quantity}"))
+                                : $"{order.ProductType} × {order.Quantity}";
+                            <tr class="order-row" data-search="@($"WO-{order.Id} {customerName} {siteName} {itemSummary} {order.DeliveryAddressSnapshot} {order.Status}".ToLowerInvariant())">
+                                <td class="fw-semibold">WO-@order.Id</td>
+                                <td>
+                                    <div class="fw-semibold">@customerName</div>
+                                    <div class="text-muted small">@siteName</div>
+                                </td>
+                                <td>
+                                    <div>@(items.Count > 0 ? $"{items.Count} product line(s)" : "1 legacy product line")</div>
+                                    <div class="text-muted small">@itemSummary</div>
+                                </td>
+                                <td>@order.DueDate.ToString("yyyy-MM-dd")</td>
+                                <td>
+                                    <form asp-controller="WorkOrders" asp-action="UpdateStatus" method="post" class="d-flex flex-column gap-1">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="id" value="@order.Id" />
+                                        <select name="status" class="form-select form-select-sm" aria-label="Status for order WO-@order.Id">
+                                            @foreach (var status in new[] { "Pending", "In Progress", "Completed" })
+                                            {
+                                                if (order.Status == status)
+                                                {
+                                                    <option value="@status" selected>@status</option>
+                                                }
+                                                else
+                                                {
+                                                    <option value="@status">@status</option>
+                                                }
+                                            }
+                                        </select>
+                                        <button type="submit" class="btn btn-sm btn-outline-primary">Update</button>
+                                    </form>
+                                </td>
+                                <td>
+                                    <a asp-action="Edit" asp-route-id="@order.Id" class="btn btn-sm btn-primary">Edit</a>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse"
+                                            data-bs-target="#orderDetails-@order.Id" aria-expanded="false"
+                                            aria-controls="orderDetails-@order.Id">View</button>
+                                </td>
+                            </tr>
+                            <tr class="order-detail-row">
+                                <td colspan="6" class="p-0 border-0">
+                                    <div class="collapse" id="orderDetails-@order.Id">
+                                        <div class="p-3 bg-light border-bottom">
+                                            <div class="row g-3">
+                                                <div class="col-md-6">
+                                                    <h6>Products</h6>
+                                                    <ul class="mb-0">
+                                                        @if (items.Count > 0)
+                                                        {
+                                                            @foreach (var item in items)
+                                                            {
+                                                                <li>@item.ProductType — Quantity: @item.Quantity</li>
+                                                            }
+                                                        }
+                                                        else
+                                                        {
+                                                            <li>@order.ProductType — Quantity: @order.Quantity (legacy)</li>
+                                                        }
+                                                    </ul>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <h6>Delivery</h6>
+                                                    <div><strong>Type:</strong> @(string.IsNullOrWhiteSpace(order.DeliveryType) ? "Not specified" : order.DeliveryType)</div>
+                                                    <div><strong>Address:</strong> @(string.IsNullOrWhiteSpace(order.DeliveryAddressSnapshot) ? "Not recorded" : order.DeliveryAddressSnapshot)</div>
+                                                    <div><strong>Instructions:</strong> @(string.IsNullOrWhiteSpace(order.DeliveryInstructions) ? "None" : order.DeliveryInstructions)</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <p id="noMatchingOrders" class="text-muted d-none mb-0">No matching orders found.</p>
+            @if (!Model.Any())
+            {
+                <p class="text-muted mb-0">No orders yet. Use + Create Order to add the first one.</p>
+            }
         </div>
     </div>
 </div>
 
-<h3>Production Orders</h3>
-
-<table class="table table-striped">
-    <thead>
-        <tr>
-            <th>Order ID</th>
-            <th>Product</th>
-            <th>Quantity</th>
-            <th>Due Date</th>
-            <th>Status</th>
-            <th>Action</th>
-        </tr>
-    </thead>
-
-    <tbody>
-        @foreach (var order in Model)
-        {
-            <tr>
-                <td>WO-@order.Id</td>
-                <td>@order.ProductType</td>
-                <td>@order.Quantity</td>
-                <td>@order.DueDate.ToString("yyyy-MM-dd")</td>
-                <td>@order.Status</td>
-                <td>
-                    <form asp-controller="WorkOrders"
-                          asp-action="UpdateStatus"
-                          method="post">
-                        @Html.AntiForgeryToken()
-
-                        <input type="hidden"
-                               name="id"
-                               value="@order.Id" />
-
-                        <select name="status"
-                                class="form-select form-select-sm">
-                            @foreach (var status in new[]
-                            {
-                                "Pending",
-                                "In Progress",
-                                "Completed"
-                            })
-                            {
-                                <option value="@status"
-                                        selected="@(order.Status == status)">
-                                    @status
-                                </option>
-                            }
-                        </select>
-
-                        <button type="submit"
-                                class="btn btn-sm btn-primary mt-1">
-                            Update
-                        </button>
-                    </form>
-                </td>
-            </tr>
-        }
-    </tbody>
-</table>
-
-<hr />
-
-<h3>Create Production Order</h3>
-
-<form asp-controller="WorkOrders"
-      asp-action="Create"
-      method="post">
-
-    @Html.AntiForgeryToken()
-
-    <div class="mb-3">
-        <label class="form-label">Product</label>
-        <select name="productType" class="form-select">
-            <option value="Fast Tread">Fast Tread</option>
-            <option value="BlueDeck">BlueDeck</option>
-            <option value="SureFit">SureFit</option>
-        </select>
-    </div>
-
-    <div class="mb-3">
-        <label class="form-label">Quantity</label>
-        <input type="number"
-               name="quantity"
-               min="1"
-               required
-               class="form-control" />
-    </div>
-
-    <div class="mb-3">
-        <label class="form-label">Due Date</label>
-        <input type="date"
-               name="dueDate"
-               min="@DateTime.Today.ToString("yyyy-MM-dd")"
-               required
-               class="form-control" />
-    </div>
-
-    <button type="submit" class="btn btn-success">
-        Create Order
-    </button>
-</form>
+<script>
+    const orderSearch = document.getElementById("orderSearch");
+    orderSearch.addEventListener("input", () => {
+        const query = orderSearch.value.trim().toLowerCase();
+        let visible = 0;
+        document.querySelectorAll("#ordersTableBody .order-row").forEach(row => {
+            const match = row.dataset.search.includes(query);
+            row.classList.toggle("d-none", !match);
+            const detailsRow = row.nextElementSibling;
+            if (detailsRow) detailsRow.classList.toggle("d-none", !match);
+            if (match) visible++;
+        });
+        document.getElementById("noMatchingOrders").classList.toggle("d-none", visible !== 0 || query.length === 0);
+    });
+</script>

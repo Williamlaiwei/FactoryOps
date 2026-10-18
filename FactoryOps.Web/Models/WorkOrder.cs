@@ -22,4 +22,7 @@ public class WorkOrder
     // Construction site relationship
     public int? ConstructionSiteId { get; set; }
     public ConstructionSite? ConstructionSite { get; set; }
+    public List<WorkOrderItem> Items { get; set; } = new();
+    // PostgreSQL's built-in xmin column; no schema addition is required.
+    public uint Version { get; set; }
 }

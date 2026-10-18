@@ -1,0 +1,128 @@
+@model FactoryOps.Web.Models.WorkOrderForm
+@using FactoryOps.Web.Models
+@{
+    var editing = ViewData["IsEditing"] is true;
+}
+<div class="container mt-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+        <div>
+            <h2>@ViewData["Title"]</h2>
+            <p class="text-muted">Choose a customer, delivery destination and order items.</p>
+        </div>
+        <a asp-action="Index" class="btn btn-outline-secondary">Back to Work Orders</a>
+    </div>
+    <div class="card"><div class="card-body">
+        <form id="orderForm" asp-action="@(editing ? "Edit" : "CreateOrder")"
+              asp-route-id="@(editing ? ViewContext.RouteData.Values["id"] : null)" method="post"
+              data-search-url="@Url.Action("Search", "Customers")" data-sites-url="@Url.Action("Sites", "Customers")">
+            <input asp-for="Version" type="hidden" />
+            <div asp-validation-summary="All" class="text-danger" role="alert"></div>
+
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h5 class="mb-0">1. Find Customer</h5>
+                <a asp-controller="Customers" asp-action="Index" class="btn btn-outline-primary btn-sm">+ New Customer</a>
+            </div>
+            <label for="customerSearch" class="form-label">Search customers</label>
+            <input id="customerSearch" type="search" class="form-control" autocomplete="off"
+                   value="@Model.SelectedCustomer?.CompanyName" placeholder="Search company, contact, phone or site..." />
+            <div id="searchResults" class="list-group mt-2" aria-live="polite"></div>
+            <div id="selectedCustomer" class="alert alert-success mt-3 @(Model.SelectedCustomer == null ? "d-none" : "")">
+                <strong>Selected Customer:</strong> <span id="selectedCustomerName">@Model.SelectedCustomer?.CompanyName</span>
+            </div>
+            <input asp-for="CustomerId" type="hidden" />
+            <span asp-validation-for="CustomerId" class="text-danger"></span>
+
+            <hr /><h5>2. Delivery Information</h5>
+            <label asp-for="DeliveryType" class="form-label">Delivery Destination</label>
+            <select asp-for="DeliveryType" class="form-select mb-3">
+                <option value="Site">Construction Site</option>
+                <option value="Company">Company Address</option>
+            </select>
+            <div id="siteSection">
+                <label asp-for="ConstructionSiteId" class="form-label">Construction Site</label>
+                <select asp-for="ConstructionSiteId" class="form-select">
+                    <option value="">Select an active construction site...</option>
+                    @foreach (var site in Model.AvailableSites)
+                    {
+                        <option value="@site.Id">@site.SiteName - @site.Address, @site.Suburb</option>
+                    }
+                </select>
+                <div id="siteMessage" class="text-muted small mt-2" aria-live="polite"></div>
+                <span asp-validation-for="ConstructionSiteId" class="text-danger"></span>
+            </div>
+            <p id="companyMessage" class="text-muted small d-none">The customer's saved billing address will be used for delivery.</p>
+
+            <hr /><h5>3. Order Details</h5>
+            <div id="orderItemsContainer" class="mt-3">
+                @for (var i = 0; i < Model.Items.Count; i++)
+                {
+                    <div class="order-item row g-3 align-items-end mb-3">
+                        <input asp-for="Items[i].Id" type="hidden" data-field="Id" />
+                        <div class="col-md-6">
+                            <label asp-for="Items[i].ProductType" class="form-label">Product *</label>
+                            <select asp-for="Items[i].ProductType" data-field="ProductType" class="form-select" required>
+                                <option value="">Select product...</option>
+                                @foreach (var product in OrderProducts.Allowed)
+                                {
+                                    <option value="@product">@product</option>
+                                }
+                            </select>
+                            <span asp-validation-for="Items[i].ProductType" class="text-danger"></span>
+                        </div>
+                        <div class="col-md-4">
+                            <label asp-for="Items[i].Quantity" class="form-label">Quantity *</label>
+                            <input asp-for="Items[i].Quantity" data-field="Quantity" type="number" min="1" max="2147483647"
+                                   step="1" class="form-control" required />
+                            <span asp-validation-for="Items[i].Quantity" class="text-danger"></span>
+                        </div>
+                        <div class="col-md-2">
+                            <button type="button" class="btn btn-outline-danger w-100 remove-item-btn">Remove</button>
+                        </div>
+                    </div>
+                }
+            </div>
+            <button type="button" id="addItemButton" class="btn btn-outline-primary mb-3">+ Add Item</button>
+            <div class="mb-3">
+                <label asp-for="DueDate" class="form-label">Requested Delivery Date *</label>
+                <input asp-for="DueDate" type="date" asp-format="{0:yyyy-MM-dd}" class="form-control" required />
+                <span asp-validation-for="DueDate" class="text-danger"></span>
+            </div>
+            <div class="mb-3">
+                <label asp-for="DeliveryInstructions" class="form-label">Delivery Instructions (Optional)</label>
+                <textarea asp-for="DeliveryInstructions" class="form-control" rows="3"></textarea>
+            </div>
+            @if (editing)
+            {
+                <p class="text-muted small">An existing past delivery date may be kept. Any new delivery date must be today or later.</p>
+                <a asp-action="Edit" asp-route-id="@ViewContext.RouteData.Values["id"]" class="btn btn-link">Reload saved order</a>
+            }
+            <div class="d-flex justify-content-end mt-3">
+                <button id="saveOrderButton" type="submit" class="btn btn-primary">@(editing ? "Save Changes" : "Create Order")</button>
+            </div>
+            <div id="orderMessage" class="mt-3 text-danger" role="status" aria-live="polite"></div>
+        </form>
+    </div></div>
+</div>
+
+<template id="orderItemTemplate">
+    <div class="order-item row g-3 align-items-end mb-3">
+        <input data-field="Id" type="hidden" />
+        <div class="col-md-6">
+            <label class="form-label" data-label="ProductType">Product *</label>
+            <select data-field="ProductType" class="form-select" required>
+                <option value="">Select product...</option>
+                @foreach (var product in OrderProducts.Allowed)
+                {
+                    <option value="@product">@product</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label" data-label="Quantity">Quantity *</label>
+            <input data-field="Quantity" type="number" min="1" max="2147483647" step="1" class="form-control" required />
+        </div>
+        <div class="col-md-2">
+            <button type="button" class="btn btn-outline-danger w-100 remove-item-btn">Remove</button>
+        </div>
+    </div>
+</template>

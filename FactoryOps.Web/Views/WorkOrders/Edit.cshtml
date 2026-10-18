@@ -1,0 +1,9 @@
+@model FactoryOps.Web.Models.WorkOrderForm
+@{
+    ViewData["Title"] = $"Edit Order WO-{ViewContext.RouteData.Values["id"]}";
+    ViewData["IsEditing"] = true;
+}
+<partial name="_OrderForm" model="Model" />
+@section Scripts {
+    <script src="~/js/work-order-form.js" asp-append-version="true"></script>
+}
