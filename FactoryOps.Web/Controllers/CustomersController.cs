@@ -218,4 +218,46 @@ public class CustomersController : Controller
         return Json(sites);
     }
 
+    // GET /Customers/Search?q=penrith
+    [HttpGet]
+    public async Task<IActionResult> Search(string? q)
+    {
+        if (string.IsNullOrWhiteSpace(q))
+            return Json(Array.Empty<object>());
+
+        var keyword = q.Trim();
+
+        if (keyword.Length < 2)
+            return Json(Array.Empty<object>());
+
+        var pattern = $"%{keyword.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_")}%";
+
+        var customers = await _db.Customers
+            .AsNoTracking()
+            .Where(c =>
+                EF.Functions.ILike(c.CompanyName, pattern, "\\") ||
+                EF.Functions.ILike(c.ContactName, pattern, "\\") ||
+                EF.Functions.ILike(c.Phone, pattern, "\\") ||
+                EF.Functions.ILike(c.Email, pattern, "\\") ||
+                EF.Functions.ILike(c.BillingAddress, pattern, "\\") ||
+                _db.ConstructionSites.Any(s =>
+                    s.CustomerId == c.Id &&
+                    (EF.Functions.ILike(s.SiteName, pattern, "\\") ||
+                     EF.Functions.ILike(s.Address, pattern, "\\"))))
+            .OrderBy(c => c.CompanyName)
+            .Take(20)
+            .Select(c => new
+            {
+                c.Id,
+                c.CompanyName,
+                c.ContactName,
+                c.Phone,
+                c.Email
+            })
+            .ToListAsync();
+
+        return Json(customers);
+    }
+
+
 }

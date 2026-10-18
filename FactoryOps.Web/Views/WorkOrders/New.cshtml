@@ -1,0 +1,248 @@
+@{
+    ViewData["Title"] = "Create Order";
+}
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2>Create Order</h2>
+            <p class="text-muted">Find a customer, choose a delivery destination, and create an order.</p>
+        </div>
+        <a asp-controller="WorkOrders" asp-action="Index" class="btn btn-outline-secondary">
+            Back to Work Orders
+        </a>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <form id="createOrderForm" asp-controller="WorkOrders" asp-action="CreateOrder" method="post">
+                @Html.AntiForgeryToken()
+
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h5 class="mb-0">1. Find Customer</h5>
+                    <a asp-controller="Customers" asp-action="Index" class="btn btn-outline-primary btn-sm">
+                        + New Customer
+                    </a>
+                </div>
+
+                <input id="customerSearch" type="search" class="form-control" autocomplete="off"
+                       placeholder="Search company, contact, phone or site..." />
+                <div id="searchResults" class="list-group mt-2"></div>
+
+                <div id="selectedCustomer" class="alert alert-success mt-3 d-none">
+                    <strong>Selected Customer:</strong> <span id="selectedCustomerName"></span>
+                </div>
+                <input type="hidden" id="customerId" name="customerId" />
+
+                <hr />
+                <h5>2. Delivery Information</h5>
+
+                <div id="deliverySection" class="d-none">
+                    <label for="deliveryType" class="form-label">Delivery Destination</label>
+                    <select id="deliveryType" name="deliveryType" class="form-select mb-3">
+                        <option value="Site">Construction Site</option>
+                        <option value="Company">Company Address</option>
+                    </select>
+
+                    <div id="siteSection">
+                        <label for="siteSelect" class="form-label">Construction Site</label>
+                        <select id="siteSelect" name="constructionSiteId" class="form-select">
+                            <option value="">Select a construction site...</option>
+                        </select>
+                        <div id="siteMessage" class="text-muted small mt-2" aria-live="polite"></div>
+                    </div>
+
+                    <p id="companyMessage" class="text-muted small d-none">
+                        The customer's saved billing address will be used as the delivery address.
+                    </p>
+                </div>
+                <p id="deliveryPlaceholder" class="text-muted">
+                    Select a customer first to load delivery options.
+                </p>
+
+                <hr />
+                <h5>3. Order Details</h5>
+                <div class="row g-3 mt-1">
+                    <div class="col-md-6">
+                        <label for="productType" class="form-label">Product *</label>
+                        <select id="productType" name="productType" class="form-select" required>
+                            <option value="">Select product...</option>
+                            <option value="BlueDeck">BlueDeck</option>
+                            <option value="Fast Tread">Fast Tread</option>
+                            <option value="SureFit">SureFit</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="quantity" class="form-label">Quantity *</label>
+                        <input id="quantity" name="quantity" type="number" min="1" step="1"
+                               class="form-control" placeholder="Enter quantity" required />
+                    </div>
+                    <div class="col-md-6">
+                        <label for="dueDate" class="form-label">Requested Delivery Date *</label>
+                        <input id="dueDate" name="dueDate" type="date" class="form-control" required />
+                    </div>
+                    <div class="col-12">
+                        <label for="deliveryInstructions" class="form-label">Delivery Instructions (Optional)</label>
+                        <textarea id="deliveryInstructions" name="deliveryInstructions" class="form-control"
+                                  rows="3" placeholder="Site access, unloading instructions, preferred delivery window..."></textarea>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-end mt-4">
+                    <button type="submit" id="saveOrderButton" class="btn btn-primary">Create Order</button>
+                </div>
+                <div id="orderMessage" class="mt-3" role="status" aria-live="polite"></div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    const form = document.getElementById("createOrderForm");
+    const searchInput = document.getElementById("customerSearch");
+    const resultsContainer = document.getElementById("searchResults");
+    const selectedCustomer = document.getElementById("selectedCustomer");
+    const selectedCustomerName = document.getElementById("selectedCustomerName");
+    const customerIdInput = document.getElementById("customerId");
+    const deliverySection = document.getElementById("deliverySection");
+    const deliveryPlaceholder = document.getElementById("deliveryPlaceholder");
+    const deliveryType = document.getElementById("deliveryType");
+    const siteSection = document.getElementById("siteSection");
+    const siteSelect = document.getElementById("siteSelect");
+    const siteMessage = document.getElementById("siteMessage");
+    const companyMessage = document.getElementById("companyMessage");
+    const orderMessage = document.getElementById("orderMessage");
+
+    let searchTimer;
+    let activeRequest;
+
+    function updateDeliveryType() {
+        const isSite = deliveryType.value === "Site";
+        siteSection.classList.toggle("d-none", !isSite);
+        companyMessage.classList.toggle("d-none", isSite);
+        siteSelect.disabled = !isSite;
+        if (!isSite) siteSelect.value = "";
+    }
+
+    function clearSelectedCustomer() {
+        customerIdInput.value = "";
+        selectedCustomer.classList.add("d-none");
+        deliverySection.classList.add("d-none");
+        deliveryPlaceholder.classList.remove("d-none");
+        siteSelect.replaceChildren(new Option("Select a construction site...", ""));
+        siteMessage.textContent = "";
+        orderMessage.textContent = "";
+        deliveryType.value = "Site";
+        updateDeliveryType();
+    }
+
+    async function loadCustomerSites(customerId) {
+        deliverySection.classList.remove("d-none");
+        deliveryPlaceholder.classList.add("d-none");
+        siteSelect.replaceChildren(new Option("Select a construction site...", ""));
+        siteMessage.textContent = "Loading sites...";
+        updateDeliveryType();
+
+        try {
+            const response = await fetch(
+                `/Customers/Sites?customerId=${encodeURIComponent(customerId)}`
+            );
+            if (!response.ok) throw new Error("Unable to load sites.");
+            const sites = await response.json();
+            if (customerIdInput.value !== String(customerId)) return;
+
+            const activeSites = sites.filter(site => site.status === "Active");
+            activeSites.forEach(site => {
+                siteSelect.add(new Option(
+                    `${site.siteName} — ${site.suburb || site.address || ""}`,
+                    String(site.id)
+                ));
+            });
+            siteMessage.textContent = activeSites.length
+                ? `${activeSites.length} active site(s) available.`
+                : "No active sites. Add one in Customer Management or choose Company Address.";
+        } catch (error) {
+            if (customerIdInput.value !== String(customerId)) return;
+            siteMessage.textContent = "Failed to load construction sites.";
+        }
+    }
+
+    deliveryType.addEventListener("change", updateDeliveryType);
+    updateDeliveryType();
+
+    searchInput.addEventListener("input", () => {
+        clearTimeout(searchTimer);
+        if (activeRequest) activeRequest.abort();
+        clearSelectedCustomer();
+        resultsContainer.replaceChildren();
+
+        const query = searchInput.value.trim();
+        if (query.length < 2) return;
+
+        searchTimer = setTimeout(async () => {
+            const controller = new AbortController();
+            activeRequest = controller;
+            try {
+                const response = await fetch(
+                    `/Customers/Search?q=${encodeURIComponent(query)}`,
+                    { signal: controller.signal }
+                );
+                if (!response.ok) throw new Error("Customer search failed");
+                const customers = await response.json();
+                if (searchInput.value.trim() !== query) return;
+                resultsContainer.replaceChildren();
+
+                if (customers.length === 0) {
+                    const message = document.createElement("div");
+                    message.className = "list-group-item text-muted";
+                    message.textContent = "No matching customers. Use + New Customer to add one.";
+                    resultsContainer.appendChild(message);
+                    return;
+                }
+
+                customers.forEach(customer => {
+                    const button = document.createElement("button");
+                    button.type = "button";
+                    button.className = "list-group-item list-group-item-action";
+
+                    const name = document.createElement("strong");
+                    name.textContent = customer.companyName;
+                    const details = document.createElement("div");
+                    details.className = "text-muted small";
+                    details.textContent = `${customer.contactName || ""} · ${customer.phone || ""}`;
+                    button.append(name, details);
+
+                    button.addEventListener("click", () => {
+                        if (activeRequest) activeRequest.abort();
+                        customerIdInput.value = String(customer.id);
+                        selectedCustomerName.textContent = customer.companyName;
+                        selectedCustomer.classList.remove("d-none");
+                        searchInput.value = customer.companyName;
+                        resultsContainer.replaceChildren();
+                        deliveryType.value = "Site";
+                        loadCustomerSites(customer.id);
+                    });
+                    resultsContainer.appendChild(button);
+                });
+            } catch (error) {
+                if (error.name !== "AbortError") {
+                    resultsContainer.textContent = "Unable to search customers.";
+                }
+            }
+        }, 300);
+    });
+
+    form.addEventListener("submit", (event) => {
+        orderMessage.textContent = "";
+        orderMessage.className = "mt-3";
+
+        if (!customerIdInput.value) {
+            event.preventDefault();
+            orderMessage.textContent = "Please select a customer from the search results.";
+        } else if (deliveryType.value === "Site" && !siteSelect.value) {
+            event.preventDefault();
+            orderMessage.textContent = "Please select an active construction site.";
+        }
+        if (event.defaultPrevented) orderMessage.classList.add("text-danger");
+    });
+</script>
