@@ -33,7 +33,7 @@ const { chromium } = require("../artifacts/browser-tools/node_modules/playwright
             page.locator("#saveOrderButton").click()
         ]);
         const created = await page.locator('[role="status"]').first().innerText();
-        const orderId = created.match(/Order WO-(\d+) created/)[1];
+        const orderId = created.match(/Order WO-(\d+) confirmed/)[1];
         const editPath = `/WorkOrders/Edit/${orderId}`;
         await page.locator(`a[href="${editPath}"]`).click();
         assert.equal(await rows.count(), 3);

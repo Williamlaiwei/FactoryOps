@@ -12,6 +12,9 @@ public class WorkOrder : ICompanyRecord
 
     public DateTime DueDate { get; set; }
     public string Status { get; set; } = "Pending";
+    public string FulfillmentStatus { get; set; } = "Unconfirmed";
+    public DateTimeOffset? ShippedAt { get; set; }
+    public Guid? CreationToken { get; set; }
     // Customer relationship
     public int? CustomerId { get; set; }
     public Customer? Customer { get; set; }

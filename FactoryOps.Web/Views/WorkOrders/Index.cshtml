@@ -4,6 +4,7 @@
     int active = Model.Count(x => x.Status == "In Progress");
     int completed = Model.Count(x => x.Status == "Completed");
     int pending = Model.Count(x => x.Status == "Pending");
+    var inventoryWarnings = ViewData["InventoryWarnings"] as Dictionary<int, List<string>> ?? new();
 }
 
 <div class="container mt-4">
@@ -25,6 +26,7 @@
         <div class="col-md-3"><div class="card p-3"><div class="text-muted">In Progress</div><h3 class="mb-0">@active</h3></div></div>
         <div class="col-md-3"><div class="card p-3"><div class="text-muted">Completed</div><h3 class="mb-0">@completed</h3></div></div>
     </div>
+    <p class="small text-muted">Confirmed orders hold stock by delivery date. Production status does not move stock. Ship Order releases that order's holds and deducts actual stock; Cancel Order releases holds without changing actual stock.</p>
 
     <div class="card">
         <div class="card-body">
@@ -39,7 +41,8 @@
                             <th>Customer / Site</th>
                             <th>Items</th>
                             <th>Delivery Date</th>
-                            <th>Status</th>
+                            <th>Production Status</th>
+                            <th>Holds / Shipment</th>
                             <th>Details</th>
                         </tr>
                     </thead>
@@ -52,7 +55,7 @@
                             var itemSummary = items.Count > 0
                                 ? string.Join(", ", items.Select(i => $"{i.ProductType} × {i.Quantity}"))
                                 : $"{order.ProductType} × {order.Quantity}";
-                            <tr class="order-row" data-search="@($"WO-{order.Id} {customerName} {siteName} {itemSummary} {order.DeliveryAddressSnapshot} {order.Status}".ToLowerInvariant())">
+                            <tr class="order-row" data-order-id="@order.Id" data-search="@($"WO-{order.Id} {customerName} {siteName} {itemSummary} {order.DeliveryAddressSnapshot} {order.Status} {order.FulfillmentStatus}".ToLowerInvariant())">
                                 <td class="fw-semibold">WO-@order.Id</td>
                                 <td>
                                     <div class="fw-semibold">@customerName</div>
@@ -67,6 +70,7 @@
                                     <form asp-controller="WorkOrders" asp-action="UpdateStatus" method="post" class="d-flex flex-column gap-1">
                                         @Html.AntiForgeryToken()
                                         <input type="hidden" name="id" value="@order.Id" />
+                                        <input type="hidden" name="version" value="@order.Version" />
                                         <select name="status" class="form-select form-select-sm" aria-label="Status for order WO-@order.Id">
                                             @foreach (var status in new[] { "Pending", "In Progress", "Completed" })
                                             {
@@ -83,6 +87,29 @@
                                         <button type="submit" class="btn btn-sm btn-outline-primary">Update</button>
                                     </form>
                                 </td>
+                                <td class="small">
+                                    <strong class="d-block">@order.FulfillmentStatus</strong>
+                                    @if (inventoryWarnings.TryGetValue(order.Id, out var stockWarnings))
+                                    { foreach (var warning in stockWarnings) { <div class="text-danger">@warning</div> } }
+                                    else if (order.FulfillmentStatus == "Reserved") { <span class="text-success">Held for @order.DueDate.ToString("yyyy-MM-dd")</span> }
+                                    @if (order.FulfillmentStatus == "Historical") { <div class="text-muted">Earlier stock already accounted</div> }
+                                    @if (order.ShippedAt.HasValue) { <div>Dispatched @order.ShippedAt.Value.ToString("yyyy-MM-dd HH:mm") UTC</div> }
+                                    <div class="d-flex flex-wrap gap-1 my-1">
+                                        @if (order.FulfillmentStatus == "Reserved")
+                                        {
+                                            <form asp-action="Ship" method="post"><input type="hidden" name="id" value="@order.Id" /><input type="hidden" name="version" value="@order.Version" /><button class="btn btn-sm btn-success">Ship Order</button></form>
+                                        }
+                                        @if (order.FulfillmentStatus is "Unconfirmed" or "Cancelled")
+                                        {
+                                            <form asp-action="Confirm" method="post"><input type="hidden" name="id" value="@order.Id" /><input type="hidden" name="version" value="@order.Version" /><button class="btn btn-sm btn-outline-primary">Confirm Hold</button></form>
+                                        }
+                                        @if (order.FulfillmentStatus is "Unconfirmed" or "Reserved")
+                                        {
+                                            <form asp-action="Cancel" method="post"><input type="hidden" name="id" value="@order.Id" /><input type="hidden" name="version" value="@order.Version" /><button class="btn btn-sm btn-outline-danger">Cancel Order</button></form>
+                                        }
+                                    </div>
+                                    <div><a asp-controller="Inventory" asp-action="Calendar">View stock schedule</a></div>
+                                </td>
                                 <td>
                                     <a asp-action="Edit" asp-route-id="@order.Id" class="btn btn-sm btn-primary">Edit</a>
                                     <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse"
@@ -91,7 +118,7 @@
                                 </td>
                             </tr>
                             <tr class="order-detail-row">
-                                <td colspan="6" class="p-0 border-0">
+                                <td colspan="7" class="p-0 border-0">
                                     <div class="collapse" id="orderDetails-@order.Id">
                                         <div class="p-3 bg-light border-bottom">
                                             <div class="row g-3">

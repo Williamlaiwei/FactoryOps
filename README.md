@@ -63,6 +63,8 @@ The SKU, name and unit on an existing order line stay unchanged when its catalog
 product is renamed, recoded, deactivated or given a different ordering unit. An
 explicit change to another product takes a new snapshot. Quantities are whole
 numbers, as in the existing order system; fractional quantities are outside Phase 2.
+Once stock tracking starts, keep that product's ordering unit fixed; use a separate
+SKU for another unit so inventory quantities are never silently converted.
 
 **Import CSV** includes a downloadable template. Files must be UTF-8 CSV, at most
 5 MB and at most 1,000 data rows. Required headers: `Sku,Name,UnitOfMeasure`.
@@ -115,6 +117,61 @@ profile; the same SKU may exist in different profiles. Company selection is a
 local operator feature, not user authentication or an enterprise tenant security
 system. Interface labels and messages are English, including the names of reply
 language options; user data and document contents keep their original language.
+
+## Inventory and replenishment planning
+
+Open **Inventory** at http://localhost:8080/Inventory. Each company has separate
+stock counts, movement history and replenishments. No demo stock is invented.
+Products start as **Not tracked** until an operator enters an opening physical
+count in the catalog ordering unit. Counts are whole quantities, including zero.
+Later stock corrections require a reason and retain an immutable movement record.
+Set a reorder point and calendar-day lead time on each tracked product.
+
+Saving a new order confirms **outbound holds** for its requested delivery date.
+Availability on a date is actual on-hand stock plus **incoming holds** expected by
+that date, minus existing outbound holds due by that date. Confirmation is blocked
+if it introduces or worsens a shortage on that date or any existing commitment date.
+New confirmations require tracked physical stock and reviewed product units. Editing
+an active order replaces its previous holds; cancellation releases them. Neither
+operation changes actual on-hand stock. Confirmation retries from the same form do
+not duplicate the order. Company transaction locks prevent simultaneous overbooking.
+
+The overview and **Stock Schedule** show first shortage dates, lowest projected
+balances, suggested quantities and order-by dates allowing for lead time. A late
+arrival cannot cover an earlier delivery. Same-day incoming supply precedes outbound
+holds for planning. Overdue incoming holds are excluded until received or rescheduled;
+past-due outbound holds are treated as due today. Report actual losses and supplier
+delays truthfully: existing commitments remain held and become shortage warnings;
+new confirmations cannot make those shortages worse.
+
+**Schedule Replenishment** records quantity, expected arrival, supplier and reference.
+Plans can be edited, rescheduled or cancelled. **Receive** records a full physical
+receipt once and increases on-hand stock atomically. Split partial deliveries into
+separate planned receipts before receiving them. Planned supply is never actual stock.
+
+Production status (**Pending**, **In Progress**, **Completed**) does not move stock.
+Use **Ship Order** for physical dispatch: it requires actual received stock, protects
+other dated holds, releases this order's outbound holds and deducts actual stock
+atomically once. Changing production status afterward never returns stock. Shipped
+and historical product lines/dates are fixed; delivery notes remain editable. A
+customer return needs a real return operation, not a production-status toggle.
+
+Open **Dashboard** at http://localhost:8080/Dashboard (also the home page). Select a
+product and the next **1 or 3 calendar months**. The blue reference line is today's
+actual stock held flat, green adds cumulative incoming holds, and red also subtracts
+dated outbound holds. Pointer/keyboard inspection and a daily data table expose the
+numbers. Untracked products show unknown stock instead of fabricated zeroes. Failed
+requests clear stale series. Dates consistently use `BusinessTimeZone`, default
+`Australia/Sydney`, independently of the container's UTC clock.
+
+Repeatable `007-inventory.sql` and `008-stock-reservations.sql` add the inventory and
+hold tables. The one-time reservation upgrade preserves valid existing open order
+commitments as holds without inventing physical stock. Old completed orders are
+marked **Historical** and never re-issued; old unlinked/unit-unknown orders remain
+**Unconfirmed** for review. Explicitly confirm current units when correcting those
+lines. The upgrade does not change existing quantities, production status or stock
+movement history. Products with inventory history must be deactivated rather than
+deleted. All mutation forms use antiforgery and company-tab checks.
 
 ## CSV import examples
 
@@ -268,6 +325,7 @@ and Python 3.10+ (the HTTP/database suite uses only the Python standard library)
 dotnet build FactoryOps.Web/FactoryOps.Web.csproj
 python tests/order_editing.py
 python tests/order_editing.py --catalog
+python tests/order_editing.py --inventory --browser
 python tests/order_editing.py --companies
 python tests/order_editing.py --companies --browser
 python tests/order_editing.py --knowledge

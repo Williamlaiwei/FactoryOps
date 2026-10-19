@@ -32,7 +32,7 @@
                         <td class="small">@if (!string.IsNullOrWhiteSpace(product.Dimensions)) { <div>Size: @product.Dimensions</div> } @if (!string.IsNullOrWhiteSpace(product.PackingSize)) { <div>Packing: @product.PackingSize</div> } @if (!string.IsNullOrWhiteSpace(product.RoughIn)) { <div>Rough-in: @product.RoughIn</div> } @if (!string.IsNullOrWhiteSpace(product.Color)) { <div>Color: @product.Color</div> } @if (!string.IsNullOrWhiteSpace(product.CeramicBody)) { <div>Body: @product.CeramicBody</div> } @if (!string.IsNullOrWhiteSpace(product.NetWeight) || !string.IsNullOrWhiteSpace(product.GrossWeight)) { <div>Weight: @product.NetWeight net / @product.GrossWeight gross</div> }</td>
                         <td>@product.UnitOfMeasure</td><td>@string.Join(", ", product.Aliases.OrderBy(x => x.Value).Select(x => x.Value))</td>
                         <td><span class="badge @(product.IsActive ? "bg-success" : "bg-secondary")">@(product.IsActive ? "Active" : "Inactive")</span></td>
-                        <td class="text-nowrap"><a asp-action="Edit" asp-route-id="@product.Id" class="btn btn-sm btn-outline-primary">Edit</a> <a asp-action="Delete" asp-route-id="@product.Id" class="btn btn-sm btn-outline-danger">Delete</a></td>
+                        <td class="text-nowrap"><a asp-action="Edit" asp-route-id="@product.Id" class="btn btn-sm btn-outline-primary">Edit</a> <a asp-controller="Inventory" asp-action="Details" asp-route-id="@product.Id" class="btn btn-sm btn-outline-secondary">Stock</a> <a asp-action="Delete" asp-route-id="@product.Id" class="btn btn-sm btn-outline-danger">Delete</a></td>
                     </tr>
                 }
             </tbody>

@@ -54,6 +54,7 @@ class ProductCatalogTests(unittest.TestCase):
         return self.post(f"/Products/Edit/{self.product_id}", values)
 
     def create_order(self, product_id=None):
+        runner.stock_fixture(product_id or self.product_id)
         values = {"CustomerId": 501, "ConstructionSiteId": 601, "DeliveryType": "Site",
                   "DueDate": (dt.date.today() + dt.timedelta(days=15)).isoformat(),
                   "Items[0].ProductId": product_id or self.product_id, "Items[0].Quantity": 12}
@@ -187,11 +188,13 @@ class ProductCatalogTests(unittest.TestCase):
                 self.assertEqual(runner.rows("Products"), before)
         self.assertIn("nonempty CSV file", self.import_csv("", "bad.txt")[1])
 
-    def test_rename_and_unit_change_preserve_order_snapshots(self):
+    def test_rename_preserves_snapshots_and_stock_unit_is_locked(self):
         order_id, item = self.create_order()
         self.assertEqual(item["ProductSkuSnapshot"], self.sku)
         self.assertEqual(item["UnitOfMeasureSnapshot"], "sheet")
-        self.edit_product(Name="Renamed panel", Sku="RENAMED-" + uuid.uuid4().hex[:8], UnitOfMeasure="pack")
+        _, body, _ = self.edit_product(UnitOfMeasure="pack")
+        self.assertIn("inventory history", body)
+        self.edit_product(Name="Renamed panel", Sku="RENAMED-" + uuid.uuid4().hex[:8])
         self.assertEqual(runner.rows("WorkOrderItems", f'"Id" = {item["Id"]}')[0], item)
         values = self.edit_order_values(order_id, item)
         _, body, url = self.post(f"/WorkOrders/Edit/{order_id}", values)
@@ -246,6 +249,7 @@ class ProductCatalogTests(unittest.TestCase):
         other_sku = "REPLACE-" + uuid.uuid4().hex[:8].upper()
         self.post("/Products/Create", dict(self.values, Sku=other_sku, Name="Replacement", UnitOfMeasure="metre"))
         other = runner.rows("Products", f'"Sku" = \'{other_sku}\'')[0]
+        runner.stock_fixture(other["Id"])
         values = self.edit_order_values(order_id, item)
         values["Items[0].ProductId"] = other["Id"]
         self.post(f"/WorkOrders/Edit/{order_id}", values)

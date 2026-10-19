@@ -4,7 +4,7 @@
     <h5>@Model.Sku — @Model.Name</h5>
     @if (used)
     {
-        <div class="alert alert-warning">This product is used by an order and cannot be deleted. Deactivate it to remove it from new order choices.</div>
+        <div class="alert alert-warning">This product has order or inventory history and cannot be deleted. Deactivate it to remove it from new order choices.</div>
         <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-primary">Edit / Deactivate</a>
     }
     else

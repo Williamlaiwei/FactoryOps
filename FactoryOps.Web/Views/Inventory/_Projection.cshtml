@@ -1,0 +1,18 @@
+@model List<InventoryEvent>
+@inject FactoryOps.Web.Services.BusinessClock Clock
+<div class="table-responsive"><table class="table align-middle">
+    <thead><tr><th>Date</th><th>Product</th><th>Event</th><th>Incoming Hold</th><th>Outbound Hold</th><th>Projected Balance</th></tr></thead>
+    <tbody>
+    @foreach (var item in Model)
+    {
+        <tr class="@(item.Balance < 0 ? "table-danger" : "")" data-product-id="@item.Product.Id">
+            <td class="text-nowrap">@item.Date.ToString("yyyy-MM-dd") @if (item.ScheduledDate < Clock.Today) { <div class="small text-danger">Overdue since @item.ScheduledDate.ToString("yyyy-MM-dd")</div> }</td>
+            <td><a asp-controller="Inventory" asp-action="Details" asp-route-id="@item.Product.Id">@item.Product.Sku</a><div class="small">@item.Product.Name</div></td>
+            <td>@if (item.Outgoing > 0) { <a asp-controller="WorkOrders" asp-action="Edit" asp-route-id="@item.SourceId">WO-@item.SourceId</a> } else { <a asp-controller="Inventory" asp-action="Replenishments" asp-fragment="receipt-@item.SourceId">R-@item.SourceId</a> }<div class="small">@item.Kind</div></td>
+            <td>@item.Incoming @if (!item.CountsInProjection) { <div class="small text-danger">Excluded: not received</div> }</td><td>@item.Outgoing</td>
+            <td>@if (!item.ProjectionKnown) { <span>Unknown - review stock/units</span> } else { <strong>@item.Balance</strong> @item.Product.UnitOfMeasure @if (item.Balance < 0) { <div class="small text-danger">Short @(-item.Balance)</div> } }</td>
+        </tr>
+    }
+    </tbody>
+</table></div>
+@if (!Model.Any()) { <p class="text-muted">No dated demand or planned receipts for tracked products.</p> }

@@ -8,6 +8,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllersWithViews(options => options.Filters.Add<CompanyFormFilter>());
 builder.Services.AddScoped<CompanyContext>();
 builder.Services.AddScoped<ProductCatalog>();
+builder.Services.AddScoped<InventoryPlanner>();
+builder.Services.AddScoped<InventoryService>();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<BusinessClock>();
 builder.Services.AddHttpClient<KnowledgeClient>(client =>
 {
     client.BaseAddress = new Uri(builder.Configuration["KnowledgeService:BaseUrl"] ?? "http://ai:8000/");

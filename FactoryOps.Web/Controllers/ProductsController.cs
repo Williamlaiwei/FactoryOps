@@ -10,7 +10,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace FactoryOps.Web.Controllers;
 
-public class ProductsController(FactoryOpsDbContext db, ProductCatalog catalog, ILogger<ProductsController> logger) : Controller
+public class ProductsController(FactoryOpsDbContext db, ProductCatalog catalog, InventoryService inventory, ILogger<ProductsController> logger) : Controller
 {
     [HttpGet]
     public async Task<IActionResult> Index(string? q, string status = "all")
@@ -74,6 +74,7 @@ public class ProductsController(FactoryOpsDbContext db, ProductCatalog catalog, 
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Edit(int id, ProductForm model)
     {
+        await using var transaction = await inventory.BeginMutation();
         var product = await db.Products.Include(x => x.Aliases).SingleOrDefaultAsync(x => x.Id == id);
         if (product == null) return NotFound();
         await ValidateProduct(model, id);
@@ -84,6 +85,7 @@ public class ProductsController(FactoryOpsDbContext db, ProductCatalog catalog, 
         db.Entry(product).Property(x => x.Name).IsModified = true;
         db.Entry(product).Property(x => x.Version).OriginalValue = model.Version;
         if (!await SaveProduct()) return View(model);
+        await transaction.CommitAsync();
         TempData["ProductMessage"] = $"Product {product.Sku} updated. Historical order details are preserved.";
         return RedirectToAction(nameof(Index));
     }
@@ -93,7 +95,7 @@ public class ProductsController(FactoryOpsDbContext db, ProductCatalog catalog, 
     {
         var product = await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id);
         if (product == null) return NotFound();
-        ViewData["IsUsed"] = await db.WorkOrderItems.AnyAsync(x => x.ProductId == id);
+        ViewData["IsUsed"] = await db.WorkOrderItems.AnyAsync(x => x.ProductId == id) || await db.InventoryStocks.AnyAsync(x => x.ProductId == id);
         return View(product);
     }
 
@@ -102,8 +104,8 @@ public class ProductsController(FactoryOpsDbContext db, ProductCatalog catalog, 
     {
         var product = await db.Products.SingleOrDefaultAsync(x => x.Id == id);
         if (product == null) return NotFound();
-        if (version != product.Version || await db.WorkOrderItems.AnyAsync(x => x.ProductId == id))
-            TempData["ProductMessage"] = "The product changed or is used by an order. Reload it or deactivate it instead.";
+        if (version != product.Version || await db.WorkOrderItems.AnyAsync(x => x.ProductId == id) || await db.InventoryStocks.AnyAsync(x => x.ProductId == id))
+            TempData["ProductMessage"] = "The product changed or has order or inventory history. Reload it or deactivate it instead.";
         else
         {
             db.Products.Remove(product);

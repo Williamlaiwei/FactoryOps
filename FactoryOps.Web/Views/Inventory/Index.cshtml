@@ -1,0 +1,38 @@
+@model InventoryPlan
+@{ ViewData["Title"] = "Inventory"; }
+<div class="mt-4">
+    <h2>Inventory</h2>
+    <p class="text-muted">Compare counted stock, scheduled receipts and outstanding orders by delivery date.</p>
+    <partial name="_Navigation" />
+    <div class="row g-3 mb-4">
+        <div class="col-sm-4"><div class="card p-3"><span>Tracked Products</span><strong class="fs-3">@Model.Products.Count(x => x.Stock != null)</strong></div></div>
+        <div class="col-sm-4"><div class="card p-3"><span>Projected Shortages</span><strong class="fs-3 text-danger">@Model.Products.Count(x => x.FirstShortageDate != null)</strong></div></div>
+        <div class="col-sm-4"><div class="card p-3"><span>Not Tracked</span><strong class="fs-3">@Model.Products.Count(x => x.Stock == null)</strong></div></div>
+    </div>
+    <div class="alert alert-light border">
+        Enter a physical count to start tracking each product. Expected receipts are plans; only received stock is on hand.
+        Forecasts include all outstanding order dates. Overdue receipts are excluded until received or rescheduled.
+        Same-day receipts are assumed to arrive before deliveries. Confirming an order creates an outbound hold and requires sufficient dated availability. Shipping requires actual received stock.
+    </div>
+    <form method="get" class="d-flex gap-2 mb-3"><label class="visually-hidden" for="inventorySearch">Search product</label><input id="inventorySearch" name="q" value="@ViewData["Query"]" type="search" class="form-control" placeholder="Search SKU or product name..." /><button class="btn btn-outline-primary">Search</button></form>
+    <div class="table-responsive"><table class="table align-middle">
+        <thead><tr><th>Product / Unit</th><th>Actual On Hand</th><th>Outbound Held</th><th>Incoming Held</th><th>Lowest Projected</th><th>Alert</th><th>Suggested Replenishment</th><th>Action</th></tr></thead>
+        <tbody>
+        @foreach (var item in Model.Products)
+        {
+            <tr data-product-id="@item.Product.Id" class="@(item.FirstShortageDate != null ? "table-danger" : "")">
+                <td><strong>@item.Product.Sku</strong><div>@item.Product.Name</div><span class="small text-muted">@item.Product.UnitOfMeasure @(!item.Product.IsActive ? "(inactive)" : "")</span></td>
+                <td>@(item.Stock?.OnHand.ToString() ?? "Unknown")</td>
+                <td>@(item.Stock == null ? "Not assessed" : item.OpenDemand.ToString()) @if (item.UncertainDemand > 0) { <div class="small text-danger">Unit review required</div> }</td>
+                <td>@(item.Stock == null ? "-" : item.ExpectedInbound.ToString()) @if (item.OverdueReceipts > 0) { <div class="small text-danger">@item.OverdueReceipts overdue; excluded</div> }</td>
+                <td>@(item.Stock == null ? "-" : item.MinimumBalance.ToString())</td>
+                <td><strong>@item.Alert</strong>@if (item.FirstShortageDate.HasValue) { <div class="small">By @item.FirstShortageDate.Value.ToString("yyyy-MM-dd")</div> }</td>
+                <td>@if (item.Stock != null && item.ReorderQuantity > 0) { <div>@item.ReorderQuantity @item.Product.UnitOfMeasure</div> } @if (item.ReorderBy.HasValue) { <div class="small">Order by @item.ReorderBy.Value.ToString("yyyy-MM-dd")</div> @if (item.ReorderBy.Value < Model.Today) { <span class="badge bg-warning text-dark">Expedite / review lead time</span> } }</td>
+                <td><a asp-action="Details" asp-route-id="@item.Product.Id" class="btn btn-sm btn-outline-primary">View Stock</a></td>
+            </tr>
+        }
+        </tbody>
+    </table></div>
+    @if (!Model.Products.Any()) { <p>No products found. Add a product in the catalog to begin.</p> }
+    @if (Model.OrderWarnings.Count > 0) { <p class="text-muted">@Model.OrderWarnings.Count outstanding order(s) need stock review or depend on planned receipts. <a asp-controller="WorkOrders" asp-action="Index">Review orders</a>.</p> }
+</div>

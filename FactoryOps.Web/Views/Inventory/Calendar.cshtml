@@ -1,0 +1,10 @@
+@model InventoryPlan
+@{ ViewData["Title"] = "Stock Schedule"; }
+<div class="mt-4">
+    <h2>Stock Schedule</h2>
+    <p class="text-muted">Planned receipts and outstanding orders, in date order. Each balance is specific to its product.</p>
+    <partial name="_Navigation" />
+    <div class="alert alert-light border">Forecast starts from today's counted stock. Same-day receipts come before deliveries; overdue orders are due now. Overdue receipts add no supply until received or rescheduled. Untracked products and lines with unknown or different units need review and are excluded from the projection.</div>
+    <partial name="_Projection" model="Model.Calendar" />
+    @if (Model.OrderWarnings.Count > 0) { <a asp-controller="WorkOrders" asp-action="Index">Review @Model.OrderWarnings.Count order(s) with stock warnings</a> }
+</div>

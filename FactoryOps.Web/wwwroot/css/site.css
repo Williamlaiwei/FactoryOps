@@ -21,6 +21,15 @@ body {
   margin-bottom: 60px;
 }
 
+.projection-blue { color: #1765d1; }
+.projection-green { color: #16803c; }
+.projection-red { color: #d32f2f; }
+.projection-stat { border: 1px solid #dee2e6; border-top: 3px solid currentColor; border-radius: .3rem; padding: .8rem; height: 100%; }
+.projection-stat strong { display: block; font-size: 1.7rem; overflow-wrap: anywhere; }
+.stock-chart-host { width: 100%; min-width: 0; }
+#stockProjectionChart { width: 100%; height: auto; min-height: 210px; background: #fff; }
+#projectionTooltip { overflow-wrap: anywhere; min-height: 2.5rem; }
+
 .english-file-picker {
   position: relative;
   display: flex;

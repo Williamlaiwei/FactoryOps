@@ -8,6 +8,8 @@ namespace FactoryOps.Web.Models;
 public class WorkOrderForm
 {
     public uint Version { get; set; }
+    public Guid? CreationToken { get; set; }
+    public bool ConfirmCurrentUnits { get; set; }
     [Range(1, int.MaxValue, ErrorMessage = "Select a valid customer.")]
     public int CustomerId { get; set; }
     public int? ConstructionSiteId { get; set; }

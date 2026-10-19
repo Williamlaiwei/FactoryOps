@@ -43,6 +43,13 @@ public class ProductCatalog(FactoryOpsDbContext db)
             errors.Add(new("Use at most 100 aliases, each no longer than 200 characters.", new[] { nameof(form.Aliases) }));
         if (await db.Products.AnyAsync(x => x.Sku == form.Sku && x.Id != excludingId))
             errors.Add(new("This SKU already exists. Use a unique product code.", new[] { nameof(form.Sku) }));
+        if (excludingId.HasValue && (await db.InventoryStocks.AnyAsync(x => x.ProductId == excludingId.Value) ||
+            await db.StockReservations.AnyAsync(x => x.ProductId == excludingId.Value)))
+        {
+            var unit = await db.Products.Where(x => x.Id == excludingId.Value).Select(x => x.UnitOfMeasure).SingleAsync();
+            if (!unit.Equals(form.UnitOfMeasure, StringComparison.OrdinalIgnoreCase))
+                errors.Add(new("This product has inventory history. Keep its ordering unit or create a separate SKU for a different unit.", new[] { nameof(form.UnitOfMeasure) }));
+        }
         return errors;
     }
 

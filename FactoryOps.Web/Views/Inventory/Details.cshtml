@@ -1,0 +1,29 @@
+@model InventoryProductPage
+@{ ViewData["Title"] = $"Stock - {Model.Plan.Product.Sku}"; var p = Model.Plan; }
+<div class="mt-4">
+    <h2>@p.Product.Sku - @p.Product.Name</h2>
+    <p class="text-muted">Stock unit: @p.Product.UnitOfMeasure</p>
+    <partial name="_Navigation" />
+    @if (p.Stock == null)
+    { <div class="alert alert-warning">Stock is not tracked. Availability is unknown until you enter a physical count.</div> }
+    else
+    {
+        <div class="card p-3 mb-3"><div class="row g-3">
+            <div class="col-sm-3">On Hand<strong class="d-block fs-3" id="onHand">@p.Stock.OnHand</strong></div>
+            <div class="col-sm-3">Reorder Point<strong class="d-block fs-3">@p.Stock.ReorderPoint</strong></div>
+            <div class="col-sm-3">Lead Time<strong class="d-block fs-3">@p.Stock.LeadTimeDays days</strong></div>
+            <div class="col-sm-3">Lowest Projected<strong class="d-block fs-3 @(p.MinimumBalance < 0 ? "text-danger" : "")">@p.MinimumBalance</strong></div>
+        </div></div>
+        <p><strong>@p.Alert.</strong> @if (p.FirstShortageDate.HasValue) { <span>First shortage: @p.FirstShortageDate.Value.ToString("yyyy-MM-dd").</span> } @if (p.ReorderQuantity > 0) { <span>Additional supply needed to stay above the reorder point: @p.ReorderQuantity @p.Product.UnitOfMeasure.</span> } @if (p.ReorderBy.HasValue) { <span>Order by @p.ReorderBy.Value.ToString("yyyy-MM-dd"), allowing @p.Stock.LeadTimeDays days.</span> }</p>
+        @if (p.UncertainDemand > 0) { <div class="alert alert-warning">Some order lines have unknown or different units. Their quantities are excluded; review them before relying on this forecast.</div> }
+    }
+    <div class="d-flex flex-wrap gap-2 mb-4"><a asp-action="Configure" asp-route-id="@p.Product.Id" class="btn btn-primary">@(p.Stock == null ? "Start Tracking Stock" : "Count Stock / Settings")</a>@if (p.Stock != null) { <a asp-action="Schedule" asp-route-productId="@p.Product.Id" class="btn btn-outline-primary">Schedule Replenishment</a> }<a asp-controller="Products" asp-action="Edit" asp-route-id="@p.Product.Id" class="btn btn-outline-secondary">Edit Catalog Product</a></div>
+    <h4>Projected Stock Schedule</h4>
+    <partial name="_Projection" model="p.Events" />
+    <h4 class="mt-4">Stock Movement History</h4>
+    <p class="small text-muted">Latest 200 physical movements: counts, receipts and dispatches. Incoming/outbound holds affect the forecast without changing actual stock. Production status changes and historical order edits do not issue or return stock.</p>
+    <div class="table-responsive"><table class="table"><thead><tr><th>Recorded (UTC)</th><th>Movement</th><th>Change</th><th>Reason / Reference</th></tr></thead><tbody>
+    @foreach (var movement in Model.Movements)
+    { <tr><td>@movement.CreatedAt.ToString("yyyy-MM-dd HH:mm")</td><td>@movement.Kind</td><td>@(movement.Quantity > 0 ? "+" : "")@movement.Quantity @p.Product.UnitOfMeasure</td><td>@movement.Reason @if (movement.WorkOrderId.HasValue) { <a asp-controller="WorkOrders" asp-action="Edit" asp-route-id="@movement.WorkOrderId">View order</a> }</td></tr> }
+    </tbody></table></div>
+</div>

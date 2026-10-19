@@ -16,7 +16,16 @@
               asp-route-id="@(editing ? ViewContext.RouteData.Values["id"] : null)" method="post"
               data-search-url="@Url.Action("Search", "Customers")" data-sites-url="@Url.Action("Sites", "Customers")">
             <input asp-for="Version" type="hidden" />
+            <input asp-for="CreationToken" type="hidden" />
             <div asp-validation-summary="All" class="text-danger" role="alert"></div>
+            @if (ViewData["FulfillmentStatus"] is "Shipped" or "Historical")
+            { <div class="alert alert-info">This order is shipped or historically accounted. Product lines and the delivery date are fixed; update customer or delivery notes as needed.</div> }
+            else
+            {
+                <div class="alert alert-light border">Saving a new or active order confirms outbound holds for its requested delivery date. Availability includes actual stock plus incoming holds due by that date, less existing outbound holds. Insufficient dated availability blocks confirmation. Actual stock is deducted only by Ship Order.</div>
+                @if (editing)
+                { <div class="form-check mb-3"><input asp-for="ConfirmCurrentUnits" class="form-check-input" /><label asp-for="ConfirmCurrentUnits" class="form-check-label">I confirm these quantities use the current catalog units (for correcting old unit snapshots).</label></div> }
+            }
 
             <div class="d-flex justify-content-between align-items-center mb-2">
                 <h5 class="mb-0">1. Find Customer</h5>

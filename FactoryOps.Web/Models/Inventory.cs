@@ -47,3 +47,16 @@ public class StockMovement : ICompanyRecord
     public Replenishment? Replenishment { get; set; }
     public Guid? RequestToken { get; set; }
 }
+
+public class StockReservation : ICompanyRecord
+{
+    public int WorkOrderId { get; set; }
+    public WorkOrder WorkOrder { get; set; } = null!;
+    public int ProductId { get; set; }
+    public Product Product { get; set; } = null!;
+    public string CompanyKey { get; set; } = "fti-demo";
+    public long Quantity { get; set; }
+    [MaxLength(32)] public string UnitOfMeasure { get; set; } = "";
+    public DateTime NeedDate { get; set; }
+    [MaxLength(16)] public string Status { get; set; } = "Held";
+}

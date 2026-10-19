@@ -32,6 +32,10 @@ const { chromium } = require("../artifacts/browser-tools/node_modules/playwright
         await Promise.all([page.waitForURL(url => url.searchParams.get("q") === alias), page.getByRole("button", { name: "Search", exact: true }).click()]);
         assert.equal(await page.locator("tr[data-product-id]").count(), 1);
 
+        await page.goto(base + `/Inventory/Configure/${productId}`);
+        await page.locator("#CountedQuantity").fill("1000000");
+        await Promise.all([page.waitForURL(base + `/Inventory/Details/${productId}`), page.getByRole("button", { name: "Save Stock Settings", exact: true }).click()]);
+
         await page.goto(base + "/WorkOrders/New");
         await page.locator("#customerSearch").fill("Catalog Test Customer");
         await page.locator("#searchResults button").filter({ hasText: "Catalog Test Customer" }).click();
@@ -77,12 +81,12 @@ const { chromium } = require("../artifacts/browser-tools/node_modules/playwright
         await page.locator("#DueDate").fill(new Date(Date.now() + 15 * 86400000).toISOString().slice(0, 10));
         await Promise.all([page.waitForURL(base + "/WorkOrders"), page.locator("#saveOrderButton").click()]);
         const message = await page.locator('[role="status"]').first().innerText();
-        const orderId = message.match(/Order WO-(\d+) created/)[1];
+        const orderId = message.match(/Order WO-(\d+) confirmed/)[1];
 
         await page.goto(base + `/Products/Edit/${productId}`);
         await page.locator("#Name").fill("Renamed browser panel");
         await page.locator("#Sku").fill(sku + "-NEW");
-        await page.locator("#UnitOfMeasure").fill("pack");
+        await page.locator("#UnitOfMeasure").fill("sheet");
         await page.locator("#IsActive").uncheck();
         await Promise.all([page.waitForURL(base + "/Products"), page.getByRole("button", { name: "Save Product", exact: true }).click()]);
         await page.goto(base + `/WorkOrders/Edit/${orderId}`);
@@ -162,13 +166,17 @@ const { chromium } = require("../artifacts/browser-tools/node_modules/playwright
         assert.ok((await page.locator("pre").textContent()).trim() === productCsv.toString("utf8").replace(/^\uFEFF/, "").trim());
         await page.locator("#File").setInputFiles({ name: "products-template.csv", mimeType: "text/csv", buffer: productCsv });
         await Promise.all([page.waitForURL(base + "/Products"), page.getByRole("button", { name: "Import Products", exact: true }).click()]);
-        const exampleProduct = page.locator("tr[data-product-id]").filter({ hasText: "Example panel" });
+        const exampleProduct = page.locator("tr[data-product-id]").filter({ hasText: "Example product" });
         assert.equal(await exampleProduct.count(), 1);
         assert.match(await exampleProduct.innerText(), /04412/);
         await exampleProduct.getByRole("link", { name: "Edit", exact: true }).click();
         assert.equal(await page.locator("#Sku").inputValue(), "04412");
-        assert.equal(await page.locator("#UnitOfMeasure").inputValue(), "sheet");
-        assert.match(await page.locator("#Aliases").inputValue(), /Panel sample/);
+        assert.equal(await page.locator("#UnitOfMeasure").inputValue(), "each");
+        assert.match(await page.locator("#Aliases").inputValue(), /Example alias/);
+        assert.equal(await page.locator("#PackingSize").inputValue(), "820 x 490 x 630 mm");
+        assert.equal(await page.locator("#RoughIn").inputValue(), "200 / 300 / 400 mm");
+        assert.equal(await page.locator("#NetWeight").inputValue(), "40 kg");
+        assert.equal(await page.locator("#GrossWeight").inputValue(), "45 kg");
         assert.deepEqual(errors, []);
         console.log("PASS: Edge catalog CRUD, numeric/alias filtering, search reset, CSV import/errors, historical snapshots, and download/preview/import of both CSV examples.");
     } finally {

@@ -43,7 +43,7 @@ public class InventoryProductPage
 
 public class InventoryPlan
 {
-    public DateTime Today { get; set; } = DateTime.Today;
+    public DateTime Today { get; set; }
     public List<InventoryProductPlan> Products { get; set; } = new();
     public Dictionary<int, List<string>> OrderWarnings { get; set; } = new();
     public List<InventoryEvent> Calendar => Products.SelectMany(x => x.Events)
@@ -59,7 +59,7 @@ public class InventoryProductPlan
     public long MinimumBalance { get; set; }
     public DateTime? FirstShortageDate { get; set; }
     public DateTime? ReorderBy { get; set; }
-    public long ReorderQuantity => Stock == null ? 0 : Math.Max(0, Stock.ReorderPoint - MinimumBalance);
+    public long ReorderQuantity => Stock == null ? 0 : Math.Max(0, Stock.ReorderPoint - MinimumBalance + 1);
     public long OpenDemand => Events.Sum(x => x.Outgoing);
     public long ExpectedInbound => Events.Where(x => x.CountsInProjection).Sum(x => x.Incoming);
     public int OverdueReceipts => Events.Count(x => x.Incoming > 0 && !x.CountsInProjection);
@@ -78,5 +78,6 @@ public class InventoryEvent
     public long Incoming { get; set; }
     public long Outgoing { get; set; }
     public bool CountsInProjection { get; set; } = true;
+    public bool ProjectionKnown { get; set; } = true;
     public long Balance { get; set; }
 }

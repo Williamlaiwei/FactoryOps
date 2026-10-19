@@ -1,0 +1,27 @@
+@model List<Replenishment>
+@inject FactoryOps.Web.Services.BusinessClock Clock
+@{ ViewData["Title"] = "Replenishments"; }
+<div class="mt-4">
+    <h2>Replenishments</h2><p class="text-muted">Plan arrivals, reschedule delays and record full receipts. Receive only after the goods physically arrive.</p>
+    <partial name="_Navigation" />
+    <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Reference / Supplier</th><th>Product</th><th>Quantity</th><th>Expected Arrival</th><th>Status</th><th>Actions</th></tr></thead><tbody>
+    @foreach (var item in Model)
+    {
+        <tr id="receipt-@item.Id" data-replenishment-id="@item.Id">
+            <td><strong>R-@item.Id</strong><div>@item.Reference</div><div class="small">@item.Supplier</div><div class="small text-muted">@item.Notes</div></td>
+            <td><a asp-action="Details" asp-route-id="@item.ProductId">@item.Product.Sku</a><div>@item.Product.Name</div></td>
+            <td>@item.Quantity @item.Product.UnitOfMeasure</td><td>@item.ExpectedDate.ToString("yyyy-MM-dd") @if (item.Status == "Planned" && item.ExpectedDate.Date < Clock.Today) { <div class="text-danger small">Overdue - excluded from forecast</div> }</td>
+            <td>@item.Status @if (item.ReceivedAt.HasValue) { <div class="small text-muted">@item.ReceivedAt.Value.ToString("yyyy-MM-dd HH:mm") UTC</div> }</td>
+            <td>@if (item.Status == "Planned")
+            {
+                <div class="d-flex flex-wrap gap-2">
+                    <a asp-action="EditReplenishment" asp-route-id="@item.Id" class="btn btn-sm btn-outline-primary">Edit / Reschedule</a>
+                    <form method="post" asp-action="Receive"><input name="id" value="@item.Id" type="hidden" /><input name="version" value="@item.Version" type="hidden" /><button class="btn btn-sm btn-success">Receive</button></form>
+                    <form method="post" asp-action="Cancel"><input name="id" value="@item.Id" type="hidden" /><input name="version" value="@item.Version" type="hidden" /><button class="btn btn-sm btn-outline-danger">Cancel</button></form>
+                </div>
+            }</td>
+        </tr>
+    }
+    </tbody></table></div>
+    @if (!Model.Any()) { <p>No replenishments yet. Schedule one to see its effect on future stock.</p> }
+</div>

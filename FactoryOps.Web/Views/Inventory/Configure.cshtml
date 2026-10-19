@@ -1,0 +1,18 @@
+@model StockSettingsForm
+@{ var product = (Product)ViewData["Product"]!; var stock = ViewData["Stock"] as InventoryStock; ViewData["Title"] = "Stock Count and Settings"; }
+<div class="mt-4">
+    <h2>Stock Count and Settings</h2><p>@product.Sku - @product.Name (@product.UnitOfMeasure)</p>
+    <a asp-action="Details" asp-route-id="@product.Id">Back to Product Stock</a>
+    <form method="post" asp-action="Configure" asp-route-id="@product.Id" class="card card-body mt-3">
+        <input asp-for="Version" type="hidden" /><input asp-for="RequestToken" type="hidden" />
+        <div asp-validation-summary="All" class="text-danger" role="alert"></div>
+        <p>Current on hand: <strong>@(stock?.OnHand.ToString() ?? "Unknown") @product.UnitOfMeasure</strong>. Enter whole quantities in this product's ordering unit.</p>
+        <div class="row g-3">
+            <div class="col-md-6"><label asp-for="CountedQuantity" class="form-label">@(stock == null ? "Opening Physical Count *" : "New Physical Count (Optional)")</label><input asp-for="CountedQuantity" type="number" step="1" min="0" max="1000000000000" class="form-control" /><div class="form-text">@(stock == null ? "Enter the quantity currently in storage, including zero if counted empty." : "Leave blank to update settings without changing stock. A new count replaces the on-hand balance.")</div></div>
+            <div class="col-md-6"><label asp-for="Reason" class="form-label">Count Reason</label><input asp-for="Reason" class="form-control" maxlength="500" placeholder="Opening count, damage, stocktake correction..." /><div class="form-text">Required when changing an existing physical count. Use Receive for arriving replenishments.</div></div>
+            <div class="col-md-6"><label asp-for="ReorderPoint" class="form-label">Reorder Point / Safety Stock</label><input asp-for="ReorderPoint" type="number" min="0" max="1000000000000" step="1" class="form-control" /><div class="form-text">Warn when projected stock reaches or falls below this quantity.</div></div>
+            <div class="col-md-6"><label asp-for="LeadTimeDays" class="form-label">Replenishment Lead Time (Calendar Days)</label><input asp-for="LeadTimeDays" type="number" min="0" max="3650" step="1" class="form-control" /><div class="form-text">Used to suggest the latest date to order before a stock risk.</div></div>
+        </div>
+        <div class="mt-3"><button class="btn btn-primary">Save Stock Settings</button></div>
+    </form>
+</div>

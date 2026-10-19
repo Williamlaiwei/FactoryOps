@@ -1,0 +1,20 @@
+@model ReplenishmentForm
+@{ var editing = ViewData["ReplenishmentId"] is int; var products = ViewData["Products"] as List<Product> ?? new(); ViewData["Title"] = editing ? "Edit Replenishment" : "Schedule Replenishment"; }
+<div class="mt-4">
+    <h2>@ViewData["Title"]</h2><partial name="_Navigation" />
+    <p class="text-muted">Schedule an expected receipt to check future order coverage. It does not increase on-hand stock until you record its receipt.</p>
+    @if (!products.Any()) { <div class="alert alert-warning">Start tracking a product in <a asp-action="Index">Inventory</a> before scheduling a replenishment.</div> }
+    <form asp-action="@(editing ? "EditReplenishment" : "Schedule")" asp-route-id="@(editing ? ViewData["ReplenishmentId"] : null)" method="post" class="card card-body">
+        <input asp-for="Version" type="hidden" /><input asp-for="CreationToken" type="hidden" />
+        <div asp-validation-summary="All" class="text-danger" role="alert"></div>
+        <div class="row g-3">
+            <div class="col-md-6"><label asp-for="ProductId" class="form-label">Product *</label><select asp-for="ProductId" class="form-select" required><option value="">Select tracked product...</option>@foreach (var product in products) { <option value="@product.Id">@product.Sku - @product.Name (@product.UnitOfMeasure)</option> }</select></div>
+            <div class="col-md-3"><label asp-for="Quantity" class="form-label">Quantity *</label><input asp-for="Quantity" type="number" step="1" min="1" max="1000000000000" class="form-control" required /></div>
+            <div class="col-md-3"><label asp-for="ExpectedDate" class="form-label">Expected Arrival Date *</label><input asp-for="ExpectedDate" asp-format="{0:yyyy-MM-dd}" type="date" class="form-control" required /></div>
+            <div class="col-md-6"><label asp-for="Supplier" class="form-label">Supplier</label><input asp-for="Supplier" maxlength="200" class="form-control" /></div>
+            <div class="col-md-6"><label asp-for="Reference" class="form-label">Purchase / Delivery Reference</label><input asp-for="Reference" maxlength="100" class="form-control" /></div>
+            <div class="col-12"><label asp-for="Notes" class="form-label">Notes</label><textarea asp-for="Notes" maxlength="1000" rows="3" class="form-control"></textarea></div>
+        </div>
+        <div class="mt-3"><button class="btn btn-primary">@(editing ? "Save Replenishment" : "Schedule Replenishment")</button></div>
+    </form>
+</div>

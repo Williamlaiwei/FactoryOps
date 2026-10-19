@@ -66,6 +66,14 @@ def development_fingerprint():
     """, "factoryops")
 
 
+def stock_fixture(product_id=None):
+    # Explicit stock for isolated regression fixtures; never seed application/demo stock.
+    condition = f'"Id"={int(product_id)}' if product_id else '"CompanyKey"=\'fti-demo\''
+    sql(f'''INSERT INTO "InventoryStocks" ("ProductId","CompanyKey","OnHand","ReorderPoint","LeadTimeDays","UpdatedAt")
+        SELECT "Id","CompanyKey",1000000000000,0,0,now() FROM "Products" WHERE {condition}
+        ON CONFLICT ("ProductId") DO NOTHING;''')
+
+
 class OrderEditingTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -81,6 +89,7 @@ class OrderEditingTests(unittest.TestCase):
               (204, 101, 'Other Alpha Site', '4 Site Road', 'Sydney', 'NSW', '2000', '', '', 'Active'),
               (205, 101, 'Missing Address', '', 'Sydney', 'NSW', '2000', '', '', 'Active');
         """)
+        stock_fixture()
         cls.customers_before = rows("Customers")
         cls.sites_before = rows("ConstructionSites")
 
@@ -359,7 +368,10 @@ def main():
                 ENV["FACTORYOPS_TEST_BASE_URL"] = BASE
                 command(["node", "tests/knowledge.browser.cjs"])
             return 0
-        if "--settings" in sys.argv:
+        if "--inventory" in sys.argv:
+            from inventory import InventoryTests
+            suite = unittest.defaultTestLoader.loadTestsFromTestCase(InventoryTests)
+        elif "--settings" in sys.argv:
             from settings import SettingsTests
             suite = unittest.defaultTestLoader.loadTestsFromTestCase(SettingsTests)
         elif "--companies" in sys.argv:
@@ -373,7 +385,8 @@ def main():
         result = unittest.TextTestRunner(verbosity=2).run(suite)
         if result.wasSuccessful() and "--browser" in sys.argv:
             ENV["FACTORYOPS_TEST_BASE_URL"] = BASE
-            script = ("tests/settings.browser.cjs" if "--settings" in sys.argv else
+            script = ("tests/inventory.browser.cjs" if "--inventory" in sys.argv else
+                      "tests/settings.browser.cjs" if "--settings" in sys.argv else
                       "tests/company_profiles.browser.cjs" if "--companies" in sys.argv else
                       "tests/product_catalog.browser.cjs" if "--catalog" in sys.argv else "tests/order_editing.browser.cjs")
             command(["node", script])
