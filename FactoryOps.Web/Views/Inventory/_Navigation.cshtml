@@ -1,6 +1,9 @@
 <div class="d-flex flex-wrap gap-2 mb-3">
     <a asp-controller="Dashboard" asp-action="Index" class="btn btn-outline-primary">Dashboard Chart</a>
     <a asp-controller="Inventory" asp-action="Index" class="btn btn-outline-primary">Stock Overview</a>
+    <a asp-controller="Inventory" asp-action="BulkCount" class="btn btn-outline-primary">Bulk Stock Count</a>
+    <a asp-controller="Inventory" asp-action="ImportCsv" class="btn btn-outline-primary">Import Stock CSV</a>
+    <a asp-controller="Inventory" asp-action="ExportStockCsv" class="btn btn-outline-primary">Download Current Stock CSV</a>
     <a asp-controller="Inventory" asp-action="Calendar" class="btn btn-outline-primary">Stock Schedule</a>
     <a asp-controller="Inventory" asp-action="Replenishments" class="btn btn-outline-primary">Replenishments</a>
     <a asp-controller="Inventory" asp-action="Schedule" class="btn btn-primary">+ Schedule Replenishment</a>

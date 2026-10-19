@@ -1,0 +1,54 @@
+@model BulkStockForm
+@{ ViewData["Title"] = "Bulk Stock Count"; }
+<div class="mt-4">
+    <h2>Bulk Stock Count</h2>
+    <partial name="_Navigation" />
+    <p>Set opening counts or update physical counts and stock settings for up to 50 products at a time.</p>
+    <div class="alert alert-light border">
+        <strong>Enter counted quantities, not quantities to add.</strong> Counts include stock reserved for orders.
+        Unknown means no physical count has been entered; zero means counted empty.
+        Leave a tracked product's count blank to change only its settings. Use Replenishments to record incoming stock.
+        Existing order holds remain reserved, even when a count creates a shortage.
+    </div>
+    <form method="get" asp-action="BulkCount" class="d-flex flex-wrap align-items-center gap-2 mb-3">
+        <label for="bulkSearch" class="visually-hidden">Search SKU or product name</label>
+        <input id="bulkSearch" name="q" value="@Model.Q" type="search" class="form-control w-auto" placeholder="Search SKU or product name..." />
+        <div class="form-check"><input id="untrackedOnly" name="untrackedOnly" type="checkbox" value="true" checked="@Model.UntrackedOnly" class="form-check-input" /><label for="untrackedOnly" class="form-check-label">Not tracked only</label></div>
+        <button class="btn btn-outline-primary">Search</button>
+    </form>
+    <form method="post" asp-action="BulkCount" id="bulkStockForm">
+        <input asp-for="Q" type="hidden" /><input asp-for="Page" type="hidden" /><input asp-for="UntrackedOnly" type="hidden" />
+        <div asp-validation-summary="All" class="text-danger" role="alert"></div>
+        <div class="mb-3"><label asp-for="Reason" class="form-label">Count Reason</label><input asp-for="Reason" class="form-control" maxlength="500" placeholder="Opening count, stocktake correction, damage..." /><div class="form-text">Applies to all selected products. Required when changing an existing physical count.</div></div>
+        <div class="table-responsive"><table class="table align-middle">
+            <thead><tr><th><input type="checkbox" id="selectAllStock" aria-label="Select all products on this page" /></th><th>Product / Unit</th><th>Actual On Hand</th><th>New Physical Count</th><th>Reorder Point</th><th>Lead Time (Days)</th></tr></thead>
+            <tbody>
+            @for (var i = 0; i < Model.Rows.Count; i++)
+            {
+                var row = Model.Rows[i]; var label = row.Product?.Sku ?? $"Product #{row.ProductId}";
+                <tr data-product-id="@row.ProductId">
+                    <td><input asp-for="Rows[i].Selected" class="form-check-input stock-selection" aria-label="Select @label" /><input asp-for="Rows[i].ProductId" type="hidden" /><input asp-for="Rows[i].ProductVersion" type="hidden" /><input asp-for="Rows[i].Version" type="hidden" /></td>
+                    <td><strong>@label</strong><div>@row.Product?.Name</div><span class="small text-muted">@row.Product?.UnitOfMeasure @(row.Product?.IsActive == false ? "(inactive)" : "")</span></td>
+                    <td>@(row.CurrentOnHand?.ToString() ?? "Unknown")</td>
+                    <td><input asp-for="Rows[i].CountedQuantity" type="number" min="0" max="1000000000000" step="1" class="form-control" style="min-width:10rem" aria-label="Physical count for @label" /></td>
+                    <td><input asp-for="Rows[i].ReorderPoint" type="number" min="0" max="1000000000000" step="1" class="form-control" style="min-width:8rem" aria-label="Reorder point for @label" /></td>
+                    <td><input asp-for="Rows[i].LeadTimeDays" type="number" min="0" max="3650" step="1" class="form-control" style="min-width:6rem" aria-label="Lead time for @label" /></td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+        @if (Model.Rows.Count > 0)
+        { <button type="submit" class="btn btn-primary" id="saveBulkStock">Save Selected Products</button><span class="ms-2 text-muted" id="stockSelectionCount" role="status"></span> }
+        else { <p>No matching products. Add products to the catalog or change the search.</p> }
+        <p class="form-text">All selected products save together. If any row is invalid or changed in another tab, none are saved. Save before changing pages or search filters.</p>
+    </form>
+    @if (Model.TotalPages > 1)
+    {
+        <nav aria-label="Product pages" class="d-flex align-items-center gap-3 my-3">
+            @if (Model.Page > 1) { <a asp-action="BulkCount" asp-route-q="@Model.Q" asp-route-untrackedOnly="@Model.UntrackedOnly" asp-route-page="@(Model.Page - 1)" class="btn btn-outline-secondary">Previous</a> }
+            <span>Page @Model.Page of @Model.TotalPages</span>
+            @if (Model.Page < Model.TotalPages) { <a asp-action="BulkCount" asp-route-q="@Model.Q" asp-route-untrackedOnly="@Model.UntrackedOnly" asp-route-page="@(Model.Page + 1)" class="btn btn-outline-secondary">Next</a> }
+        </nav>
+    }
+</div>
+@section Scripts { <script src="~/js/inventory-bulk.js" asp-append-version="true"></script> }

@@ -127,14 +127,62 @@ count in the catalog ordering unit. Counts are whole quantities, including zero.
 Later stock corrections require a reason and retain an immutable movement record.
 Set a reorder point and calendar-day lead time on each tracked product.
 
+Use **Inventory > Bulk Stock Count** to enter opening counts or update counts and
+settings for up to 50 products per page. Search by SKU/name or filter **Not tracked
+only**. Editing a number selects that row; only selected rows save. Counts replace
+on-hand balances (including reserved stock), rather than adding quantities. Leave a
+tracked count blank for settings-only updates. A shared reason is required for
+changes to existing counts, and each nonzero adjustment retains a movement record.
+All selected rows save atomically; stale stock/catalog versions reject the entire
+batch. Replayed forms cannot apply adjustments again. Existing holds are preserved,
+so a lower count can expose shortages. Use replenishment receipt for arriving goods.
+
+**Inventory > Import Stock CSV** accepts up to 1,000 rows / 5 MB, with a visible
+example and matching downloadable UTF-8 CSV. Required headings are `Sku`,
+`UnitOfMeasure`, `CountedQuantity`; optional headings are `ReorderPoint`,
+`LeadTimeDays`, `Reason`. SKUs must already exist in the active company and units
+must match the catalog. Preserve leading zeros in SKUs. Counts are replacement
+physical totals, including held stock; zero is valid. A blank count keeps tracked
+stock, while a new stock record requires an opening count. Blank settings preserve
+existing values or default to zero for new stock. Recounts require a reason.
+Upload validates every row and shows changes without writing stock. Confirming
+the preview saves the whole batch atomically. The protected preview is scoped to
+the active company, expires after 15 minutes, and rejects stale stock/catalog
+versions or repeated confirmation. Each nonzero adjustment retains its reason in
+movement history. Existing holds remain unchanged and may expose shortages.
+
+**Download Current Stock CSV** exports the active company's tracked products,
+including zero balances and inactive products, in the same format accepted by the
+importer. Untracked products are excluded. Edit counts/settings, supply reasons for
+changed counts, and upload the entire file (up to 1,000 rows per import). Preserve
+SKUs as text and leave `StockSnapshot` unchanged. This protected per-row snapshot
+checks company, product identity, catalog version and stock version at upload;
+changes since download reject the entire file before preview. A second version
+check protects confirmation. The plain example remains available for opening
+counts. CSV export/import events are written to application logs; nonzero stock
+adjustments retain dated movement records and reasons.
+
+Before enabling controlled access, add user identities and separate permissions
+for viewing/exporting stock, importing counts, and confirming adjustments. Full
+audit history is still pending: record the operator, action, timestamp, company,
+batch, old/new counts and settings, and reason for export/import and manual edits.
+Current application logs and movement records do not identify an authenticated
+operator or provide a complete audit trail for settings-only changes.
+
 Saving a new order confirms **outbound holds** for its requested delivery date.
 Availability on a date is actual on-hand stock plus **incoming holds** expected by
-that date, minus existing outbound holds due by that date. Confirmation is blocked
-if it introduces or worsens a shortage on that date or any existing commitment date.
-New confirmations require tracked physical stock and reviewed product units. Editing
+that date, minus existing outbound holds due by that date. Unknown stock or a new
+or worsened shortage triggers a **Stock Warning** dialog. **Go Back** saves nothing;
+**Continue Anyway** explicitly accepts the displayed warning and saves the order
+with its full outbound demand held. Physical stock remains unchanged; forecasts can
+be negative. Untracked stock stays unknown until counted. Consent expires after 15
+minutes and is bound to the company, order details and displayed warnings; changed
+quantities or shortages require fresh consent. Accepted warnings are logged after
+a successful save. Product/unit validation stays mandatory. Editing
 an active order replaces its previous holds; cancellation releases them. Neither
 operation changes actual on-hand stock. Confirmation retries from the same form do
-not duplicate the order. Company transaction locks prevent simultaneous overbooking.
+not duplicate the order. Company transaction locks keep each availability check and
+reservation atomic; overbooking requires explicit consent.
 
 The overview and **Stock Schedule** show first shortage dates, lowest projected
 balances, suggested quantities and order-by dates allowing for lead time. A late
@@ -142,7 +190,7 @@ arrival cannot cover an earlier delivery. Same-day incoming supply precedes outb
 holds for planning. Overdue incoming holds are excluded until received or rescheduled;
 past-due outbound holds are treated as due today. Report actual losses and supplier
 delays truthfully: existing commitments remain held and become shortage warnings;
-new confirmations cannot make those shortages worse.
+new or worsened shortages require explicit consent when saving an order.
 
 **Schedule Replenishment** records quantity, expected arrival, supplier and reference.
 Plans can be edited, rescheduled or cancelled. **Receive** records a full physical

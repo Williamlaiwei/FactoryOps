@@ -3,10 +3,11 @@ using FactoryOps.Web.Models;
 using FactoryOps.Web.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.DataProtection;
 
 namespace FactoryOps.Web.Controllers;
 
-public class InventoryController(FactoryOpsDbContext db, InventoryPlanner planner, InventoryService inventory, BusinessClock clock, ILogger<InventoryController> logger) : Controller
+public partial class InventoryController(FactoryOpsDbContext db, InventoryPlanner planner, InventoryService inventory, BusinessClock clock, ILogger<InventoryController> logger, IDataProtectionProvider protection, CompanyContext company) : Controller
 {
     [HttpGet]
     public async Task<IActionResult> Index(string? q)
@@ -21,6 +22,91 @@ public class InventoryController(FactoryOpsDbContext db, InventoryPlanner planne
 
     [HttpGet]
     public async Task<IActionResult> Calendar() => View(await planner.Build());
+
+    [HttpGet]
+    public async Task<IActionResult> BulkCount(string? q, bool untrackedOnly = false, int page = 1)
+    {
+        var query = db.Products.AsNoTracking().AsQueryable();
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            var search = q.Trim().ToLower();
+            query = query.Where(x => x.Sku.ToLower().Contains(search) || x.Name.ToLower().Contains(search));
+        }
+        if (untrackedOnly) query = query.Where(x => !db.InventoryStocks.Any(s => s.ProductId == x.Id));
+        var model = new BulkStockForm { Q = q, UntrackedOnly = untrackedOnly, TotalProducts = await query.CountAsync() };
+        model.Page = Math.Clamp(page, 1, model.TotalPages);
+        var products = await query.OrderBy(x => x.Sku).ThenBy(x => x.Id)
+            .Skip((model.Page - 1) * BulkStockForm.PageSize).Take(BulkStockForm.PageSize).ToListAsync();
+        var ids = products.Select(x => x.Id).ToArray();
+        var stocks = await db.InventoryStocks.AsNoTracking().Where(x => ids.Contains(x.ProductId)).ToDictionaryAsync(x => x.ProductId);
+        model.Rows = products.Select(product =>
+        {
+            stocks.TryGetValue(product.Id, out var stock);
+            return new BulkStockRow { ProductId = product.Id, ProductVersion = product.Version, Product = product,
+                Version = stock?.Version, CurrentOnHand = stock?.OnHand,
+                ReorderPoint = stock?.ReorderPoint ?? 0, LeadTimeDays = stock?.LeadTimeDays ?? 0 };
+        }).ToList();
+        return View(model);
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> BulkCount(BulkStockForm model)
+    {
+        await using var transaction = await inventory.BeginMutation();
+        var ids = model.Rows.Select(x => x.ProductId).Distinct().ToArray();
+        var products = await db.Products.Where(x => ids.Contains(x.Id)).ToDictionaryAsync(x => x.Id);
+        var stocks = await db.InventoryStocks.Where(x => ids.Contains(x.ProductId)).ToDictionaryAsync(x => x.ProductId);
+        var selected = model.Rows.Where(x => x.Selected).ToList();
+        if (selected.Count == 0) ModelState.AddModelError("", "Select at least one product to save.");
+        if (ids.Length != model.Rows.Count) ModelState.AddModelError("", "Each product can appear only once. Reload this page.");
+        foreach (var row in model.Rows)
+        {
+            products.TryGetValue(row.ProductId, out var product);
+            stocks.TryGetValue(row.ProductId, out var stock);
+            row.Product = product; row.CurrentOnHand = stock?.OnHand;
+            if (!row.Selected) continue;
+            var label = product?.Sku ?? $"Product #{row.ProductId}";
+            if (product == null || product.Version != row.ProductVersion || stock?.Version != row.Version)
+                ModelState.AddModelError("", $"{label}: product or stock changed. Reload before saving; nothing was changed.");
+            if (stock == null && !row.CountedQuantity.HasValue)
+                ModelState.AddModelError("", $"{label}: enter an opening physical count, including zero if counted empty.");
+            if (stock != null && row.CountedQuantity.HasValue && row.CountedQuantity != stock.OnHand && string.IsNullOrWhiteSpace(model.Reason))
+                ModelState.AddModelError(nameof(model.Reason), $"{label}: enter a count reason when changing existing stock.");
+        }
+        if (!ModelState.IsValid) return View(model);
+        foreach (var row in selected)
+        {
+            var product = products[row.ProductId];
+            stocks.TryGetValue(row.ProductId, out var stock);
+            ApplyStockCount(product, stock, row.CountedQuantity, row.ReorderPoint, row.LeadTimeDays, model.Reason);
+        }
+        if (!await Save()) return View(model);
+        await transaction.CommitAsync();
+        TempData["InventoryMessage"] = $"Saved {selected.Count} product(s). Physical counts replace on-hand balances; existing holds are unchanged. Review any shortage warnings.";
+        return RedirectToAction(nameof(Index));
+    }
+
+    private void ApplyStockCount(Product product, InventoryStock? stock, long? count, long reorderPoint, int leadTimeDays, string? reason)
+    {
+        var opening = stock == null;
+        var delta = count.HasValue ? count.Value - (stock?.OnHand ?? 0) : 0;
+        if (stock == null)
+        {
+            stock = new InventoryStock { ProductId = product.Id }; db.InventoryStocks.Add(stock);
+            // Protect the ordering unit against a simultaneous catalog edit.
+            db.Entry(product).Property(x => x.UnitOfMeasure).IsModified = true;
+        }
+        stock.OnHand = count ?? stock.OnHand;
+        stock.ReorderPoint = reorderPoint; stock.LeadTimeDays = leadTimeDays;
+        stock.UpdatedAt = DateTimeOffset.UtcNow;
+        // Every selected row advances its version, including settings-only saves.
+        db.Entry(stock).Property(x => x.UpdatedAt).IsModified = true;
+        if (delta != 0) db.StockMovements.Add(new()
+        {
+            ProductId = product.Id, Quantity = delta, Kind = opening ? "Opening balance" : "Stock count",
+            Reason = string.IsNullOrWhiteSpace(reason) ? "Opening physical count (bulk)" : reason.Trim()
+        });
+    }
 
     [HttpGet]
     public async Task<IActionResult> Details(int id)

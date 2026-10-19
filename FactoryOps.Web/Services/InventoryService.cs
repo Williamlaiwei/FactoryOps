@@ -6,6 +6,10 @@ using Microsoft.EntityFrameworkCore.Storage;
 namespace FactoryOps.Web.Services;
 
 public class InventoryException(string message) : Exception(message) { }
+public class InventoryWarningException(List<string> warnings) : InventoryException(string.Join(" ", warnings))
+{
+    public IReadOnlyList<string> Warnings { get; } = warnings;
+}
 
 // All stock/hold mutations use one company transaction lock, then one atomic save.
 public class InventoryService(FactoryOpsDbContext db, CompanyContext company, BusinessClock clock)
@@ -38,12 +42,12 @@ public class InventoryService(FactoryOpsDbContext db, CompanyContext company, Bu
         return result;
     }
 
-    public async Task Reserve(WorkOrder order)
+    public async Task<List<string>> Reserve(WorkOrder order, bool acceptStockWarnings = false)
     {
         if (order.FulfillmentStatus is "Shipped" or "Historical")
             throw new InventoryException("Shipped or historical orders cannot create new stock holds.");
         var desired = Describe(order);
-        await CheckCoverage(order.Id, order.DueDate.Date, desired, new());
+        var warnings = await CheckCoverage(order.Id, order.DueDate.Date, desired, new(), acceptStockWarnings);
         var rows = order.Id == 0 ? new List<StockReservation>() : await db.StockReservations.Where(x => x.WorkOrderId == order.Id).ToListAsync();
         foreach (var row in rows.Where(x => x.Status == "Held" && !desired.ContainsKey(x.ProductId))) row.Status = "Released";
         foreach (var (id, value) in desired)
@@ -53,6 +57,7 @@ public class InventoryService(FactoryOpsDbContext db, CompanyContext company, Bu
             row.Quantity = value.Quantity; row.UnitOfMeasure = value.Unit; row.NeedDate = order.DueDate.Date; row.Status = "Held";
         }
         order.FulfillmentStatus = "Reserved";
+        return warnings;
     }
 
     public async Task Cancel(WorkOrder order)
@@ -88,8 +93,9 @@ public class InventoryService(FactoryOpsDbContext db, CompanyContext company, Bu
         order.FulfillmentStatus = "Shipped"; order.ShippedAt = DateTimeOffset.UtcNow;
     }
 
-    private async Task CheckCoverage(int orderId, DateTime needDate, Dictionary<int, (long Quantity, string Unit)> proposed, Dictionary<int, long> shipping)
+    private async Task<List<string>> CheckCoverage(int orderId, DateTime needDate, Dictionary<int, (long Quantity, string Unit)> proposed, Dictionary<int, long> shipping, bool acceptStockWarnings = false)
     {
+        var warnings = new List<string>();
         var today = clock.Today;
         var held = await db.StockReservations.AsNoTracking().Where(x => x.Status == "Held").ToListAsync();
         var stocks = await db.InventoryStocks.AsNoTracking().Include(x => x.Product).ToDictionaryAsync(x => x.ProductId);
@@ -97,14 +103,21 @@ public class InventoryService(FactoryOpsDbContext db, CompanyContext company, Bu
         DateTime Effective(DateTime value) => value.Date < today ? today : value.Date;
         foreach (var productId in proposed.Keys.Union(shipping.Keys))
         {
-            if (!stocks.TryGetValue(productId, out var stock))
-                throw new InventoryException($"Stock is not tracked for product #{productId}. Enter its physical count in Inventory before confirming this order.");
-            var product = stock.Product;
+            stocks.TryGetValue(productId, out var stock);
+            var product = stock?.Product ?? await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.Id == productId);
+            if (product == null) throw new InventoryException("A product is no longer available in the active company. Review the order lines.");
             if (proposed.TryGetValue(productId, out var item) && !InventoryPlanner.CompatibleUnit(item.Unit, product.UnitOfMeasure))
                 throw new InventoryException($"{product.Sku}: missing or different ordering unit. Review quantities and confirm the current catalog units.");
             var holds = held.Where(x => x.ProductId == productId).ToList();
             if (holds.Any(x => !InventoryPlanner.CompatibleUnit(x.UnitOfMeasure, product.UnitOfMeasure)))
                 throw new InventoryException($"{product.Sku}: an existing hold has a different unit. Review it before allocating more stock.");
+            if (stock == null)
+            {
+                var message = $"Stock is not tracked for {product.Sku} (product #{productId}). Availability is unknown. Enter its physical count in Inventory and arrange stock before shipping.";
+                if (shipping.ContainsKey(productId)) throw new InventoryException(message);
+                warnings.Add(message);
+                continue;
+            }
             if (shipping.GetValueOrDefault(productId) > stock.OnHand)
                 throw new InventoryException($"Not enough actual stock to ship {product.Sku}: {stock.OnHand} {product.UnitOfMeasure} on hand. Receive the incoming goods first.");
             var receipts = inbound.Where(x => x.ProductId == productId).ToList();
@@ -119,8 +132,15 @@ public class InventoryService(FactoryOpsDbContext db, CompanyContext company, Bu
                 after += supply - holds.Where(x => x.WorkOrderId != orderId && Effective(x.NeedDate) == date).Sum(x => x.Quantity);
                 if (proposed.TryGetValue(productId, out var demand) && Effective(needDate) == date) after -= demand.Quantity;
                 if (after < 0 && after < before)
-                    throw new InventoryException($"Cannot confirm or ship: {product.Sku} would be short {-after} {product.UnitOfMeasure} on {date:yyyy-MM-dd} after existing holds. Reduce the quantity or schedule sufficient incoming stock before that date.");
+                {
+                    var message = $"{product.Sku} would be short {-after} {product.UnitOfMeasure} on {date:yyyy-MM-dd} after existing holds. Arrange sufficient incoming stock before that date.";
+                    if (shipping.Count > 0) throw new InventoryException(message);
+                    warnings.Add(message);
+                    break;
+                }
             }
         }
+        if (warnings.Count > 0 && !acceptStockWarnings) throw new InventoryWarningException(warnings);
+        return warnings;
     }
 }

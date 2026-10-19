@@ -1,12 +1,16 @@
 """Dated inbound/outbound holds, physical dispatch and dashboard integration tests."""
 import concurrent.futures
+import csv
 import datetime as dt
 import http.cookiejar
+import html
+import io
 import json
 import re
 import threading
 import unittest
 import urllib.request
+import urllib.error
 import uuid
 import __main__ as runner
 
@@ -56,6 +60,97 @@ class InventoryTests(unittest.TestCase):
         values.update(extra)
         return values
 
+    def warning_consent(self, body, values):
+        fields = {key: html.unescape(value) for key, value in re.findall(r'<input\b[^>]*name="([^"]+)"[^>]*value="([^"]*)"', body)}
+        self.assertTrue(fields.get("StockWarningToken"), body[:800])
+        return dict(values, **fields, AcceptStockWarning="true")
+
+    def test_stock_warning_requires_consent_then_records_shortage_hold_without_deducting(self):
+        self.configure(2)
+        fields, _ = self.get_form("/WorkOrders/New")
+        values = dict(fields, **self.payload(5))
+        before = runner.rows("WorkOrders")
+        _, body, _ = self.post("/WorkOrders/CreateOrder", values, "/WorkOrders/New")
+        self.assertIn("Stock Warning", body); self.assertIn("would be short 3", body)
+        self.assertEqual(runner.rows("WorkOrders"), before); self.assertEqual(self.holds(), [])
+        consent = self.warning_consent(body, values)
+        _, body, url = self.post("/WorkOrders/CreateOrder", consent, "/WorkOrders/New")
+        self.assertTrue(url.endswith("/WorkOrders"), body[:800])
+        order = runner.rows("WorkOrders")[-1]["Id"]
+        self.assertEqual(self.stock()["OnHand"], 2)
+        self.assertEqual(self.holds(order)[0]["Quantity"], 5)
+        self.assertEqual(self.projection()["days"][-1]["available"], -3)
+        self.post("/WorkOrders/CreateOrder", consent, "/WorkOrders/New")
+        self.assertEqual(len(runner.rows("WorkOrders")), len(before) + 1)
+        _, body, _ = self.action(order, "Ship")
+        self.assertIn("Not enough actual stock", body)
+        self.assertEqual(self.stock()["OnHand"], 2)
+
+    def test_unknown_stock_warning_can_be_accepted_without_inventing_stock(self):
+        values = self.payload(3)
+        _, body, _ = self.post("/WorkOrders/CreateOrder", values, "/WorkOrders/New")
+        self.assertIn("Availability is unknown", body)
+        _, body, url = self.post("/WorkOrders/CreateOrder", self.warning_consent(body, values), "/WorkOrders/New")
+        self.assertTrue(url.endswith("/WorkOrders"), body[:800])
+        order = runner.rows("WorkOrders")[-1]["Id"]
+        self.assertEqual(self.holds(order)[0]["Quantity"], 3)
+        self.assertIsNone(self.stock()); self.assertIsNone(self.projection()["onHand"])
+        _, body, _ = self.action(order, "Ship")
+        self.assertIn("Stock is not tracked", body)
+        self.assertEqual(self.holds(order)[0]["Quantity"], 3)
+
+    def test_warning_consent_cannot_be_forged_or_reused_for_changed_quantity_or_risk(self):
+        self.configure(2)
+        values = self.payload(5, AcceptStockWarning="true")
+        before = runner.rows("WorkOrders")
+        _, body, _ = self.post("/WorkOrders/CreateOrder", values, "/WorkOrders/New")
+        self.assertEqual(runner.rows("WorkOrders"), before)
+        consent = self.warning_consent(body, values)
+        consent["Items[0].Quantity"] = 7
+        _, body, _ = self.post("/WorkOrders/CreateOrder", consent, "/WorkOrders/New")
+        self.assertIn("would be short 5", body); self.assertEqual(runner.rows("WorkOrders"), before)
+        consent = self.warning_consent(body, consent)
+        self.configure(1)
+        _, body, _ = self.post("/WorkOrders/CreateOrder", consent, "/WorkOrders/New")
+        self.assertIn("would be short 6", body); self.assertEqual(runner.rows("WorkOrders"), before)
+        consent = self.warning_consent(body, consent)
+        _, body, url = self.post("/WorkOrders/CreateOrder", consent, "/WorkOrders/New")
+        self.assertTrue(url.endswith("/WorkOrders"), body[:800]); self.assertEqual(self.stock()["OnHand"], 1)
+
+    def test_edit_stock_warning_preserves_original_until_accepted(self):
+        self.configure(5)
+        order = self.order(3)
+        fields, _ = self.get_form(f"/WorkOrders/Edit/{order}")
+        values = dict(fields, **self.payload(8, 15))
+        _, body, _ = self.post(f"/WorkOrders/Edit/{order}", values)
+        self.assertIn("would be short 3", body)
+        self.assertEqual(self.holds(order)[0]["Quantity"], 3)
+        self.assertEqual(runner.rows("WorkOrders", f'"Id"={order}')[0]["Quantity"], 3)
+        _, body, url = self.post(f"/WorkOrders/Edit/{order}", self.warning_consent(body, values))
+        self.assertTrue(url.endswith("/WorkOrders"), body[:800])
+        self.assertEqual(self.holds(order)[0]["Quantity"], 8)
+        self.assertEqual(self.stock()["OnHand"], 5)
+
+    def test_stock_consent_never_bypasses_unit_validation_or_partial_save_protection(self):
+        self.configure(1)
+        values = self.payload(5)
+        _, body, _ = self.post("/WorkOrders/CreateOrder", values, "/WorkOrders/New")
+        consent = self.warning_consent(body, values)
+        before = runner.rows("WorkOrders")
+        runner.sql('''CREATE FUNCTION warning_hold_fail() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Injected warning hold failure'; END $$;
+            CREATE TRIGGER warning_hold_fail BEFORE INSERT ON "StockReservations" FOR EACH ROW EXECUTE FUNCTION warning_hold_fail();''')
+        try:
+            self.post("/WorkOrders/CreateOrder", consent, "/WorkOrders/New")
+            self.assertEqual(runner.rows("WorkOrders"), before); self.assertEqual(self.holds(), [])
+        finally: runner.sql('DROP TRIGGER warning_hold_fail ON "StockReservations"; DROP FUNCTION warning_hold_fail();')
+        self.configure(10)
+        order = self.order(3)
+        runner.sql(f'UPDATE "WorkOrderItems" SET "UnitOfMeasureSnapshot"=\'box\' WHERE "WorkOrderId"={order};')
+        fields, _ = self.get_form(f"/WorkOrders/Edit/{order}")
+        _, body, _ = self.post(f"/WorkOrders/Edit/{order}", dict(fields, **self.payload(3), AcceptStockWarning="true", StockWarningToken=consent["StockWarningToken"]))
+        self.assertIn("different ordering unit", body)
+        self.assertEqual(self.holds(order)[0]["Quantity"], 3)
+
     def order(self, quantity, days=10, extra=None):
         _, body, url = self.post("/WorkOrders/CreateOrder", dict(self.payload(quantity, days), **(extra or {})), "/WorkOrders/New")
         self.assertTrue(url.endswith("/WorkOrders"), body[:800])
@@ -82,6 +177,276 @@ class InventoryTests(unittest.TestCase):
     def receipt(self, receipt_id, action="Receive", version=None):
         version = version or runner.sql(f'SELECT xmin::text FROM "Replenishments" WHERE "Id"={receipt_id};')
         return self.post(f"/Inventory/{action}", {"id": receipt_id, "version": version}, "/Inventory/Schedule")
+
+    def bulk_pair(self):
+        sku = self.sku + "-B"
+        self.post("/Products/Create", {"Sku": sku, "Name": "Bulk second product", "UnitOfMeasure": "each", "IsActive": "true"})
+        other = runner.rows("Products", f'"Sku"=\'{sku}\'')[0]["Id"]
+        fields, _ = self.get_form("/Inventory/BulkCount?q=" + self.sku)
+        indexes = {int(value): key.split(".")[0] for key, value in fields.items() if key.endswith(".ProductId")}
+        for product_id in (self.product_id, other): fields[indexes[product_id] + ".Selected"] = "true"
+        return other, fields, indexes
+
+    def stock_csv(self, content, filename="stock.csv"):
+        fields, _ = self.get_form("/Inventory/ImportCsv")
+        boundary = "stock-" + uuid.uuid4().hex
+        raw = content.encode("utf-8") if isinstance(content, str) else content
+        data = (f'--{boundary}\r\nContent-Disposition: form-data; name="__RequestVerificationToken"\r\n\r\n'
+                f'{fields["__RequestVerificationToken"]}\r\n--{boundary}\r\n'
+                f'Content-Disposition: form-data; name="__CompanyKey"\r\n\r\n'
+                f'{fields["__CompanyKey"]}\r\n--{boundary}\r\n'
+                f'Content-Disposition: form-data; name="File"; filename="{filename}"\r\n'
+                'Content-Type: text/csv\r\n\r\n').encode() + raw + f'\r\n--{boundary}--\r\n'.encode()
+        request = urllib.request.Request(runner.BASE + "/Inventory/ImportCsv", data=data,
+                                        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
+        try: response = self.client.open(request, timeout=60)
+        except urllib.error.HTTPError as error: response = error
+        body = response.read().decode()
+        token = re.search(r'name="token" value="([^"]+)"', body)
+        return response.status, body, html.unescape(token[1]) if token else None
+
+    def confirm_csv(self, token):
+        return self.post("/Inventory/ConfirmStockImport", {"token": token}, "/Inventory/ImportCsv")
+
+    def exported_stock(self):
+        status, body, _ = self.request("/Inventory/ExportStockCsv")
+        self.assertEqual(status, 200); self.assertTrue(body.startswith('\ufeff'))
+        return list(csv.DictReader(io.StringIO(body.lstrip('\ufeff'))))
+
+    def write_stock_csv(self, rows):
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=list(rows[0]))
+        writer.writeheader(); writer.writerows(rows)
+        return output.getvalue()
+
+    def test_export_edit_whole_file_reimport_preserves_holds_zero_and_inactive_products(self):
+        self.configure(10)
+        order = self.order(4)
+        other, _, _ = self.bulk_pair()
+        self.configure(0, product_id=other)
+        runner.sql(f'UPDATE "Products" SET "IsActive"=false WHERE "Id"={other};')
+        before = runner.sql('SELECT coalesce(json_agg(t ORDER BY t."ProductId"),\'[]\') FROM "InventoryStocks" t;')
+        rows = self.exported_stock()
+        self.assertEqual(runner.sql('SELECT coalesce(json_agg(t ORDER BY t."ProductId"),\'[]\') FROM "InventoryStocks" t;'), before)
+        edited = next(x for x in rows if x["Sku"] == self.sku)
+        edited.update(CountedQuantity="8", ReorderPoint="3", LeadTimeDays="9", Reason="Downloaded stocktake")
+        other_sku = runner.rows("Products", f'"Id"={other}')[0]["Sku"]
+        self.assertEqual(next(x for x in rows if x["Sku"] == other_sku)["CountedQuantity"], "0")
+        self.assertTrue(all(x["StockSnapshot"] for x in rows))
+        _, body, token = self.stock_csv(self.write_stock_csv(rows))
+        self.assertIsNotNone(token, body[:800]); self.confirm_csv(token)
+        self.assertEqual((self.stock()["OnHand"], self.stock()["ReorderPoint"], self.stock()["LeadTimeDays"]), (8, 3, 9))
+        self.assertEqual(self.stock(other)["OnHand"], 0)
+        self.assertEqual(self.holds(order)[0]["Quantity"], 4)
+        self.assertEqual(runner.rows("StockMovements", f'"ProductId"={self.product_id}')[-1]["Reason"], "Downloaded stocktake")
+
+    def test_export_rejects_changes_since_download_and_preserves_company_scope(self):
+        self.configure(10)
+        other, _, _ = self.bulk_pair()
+        rows = self.exported_stock()
+        self.assertNotIn(self.sku + "-B", [x["Sku"] for x in rows])
+        selected = next(x for x in rows if x["Sku"] == self.sku)
+        original_snapshot = selected["StockSnapshot"]
+        selected.update(CountedQuantity="8", Reason="Count correction")
+        self.configure(12)
+        _, body, token = self.stock_csv(self.write_stock_csv(rows))
+        self.assertIsNone(token); self.assertIn("changed since download", body)
+        self.assertEqual(self.stock()["OnHand"], 12); self.assertIsNone(self.stock(other))
+        selected["StockSnapshot"] = "tampered"
+        _, body, token = self.stock_csv(self.write_stock_csv([selected]))
+        self.assertIsNone(token); self.assertIn("StockSnapshot is invalid", body)
+        selected["StockSnapshot"] = ""
+        _, body, token = self.stock_csv(self.write_stock_csv([selected]))
+        self.assertIsNone(token); self.assertIn("keep StockSnapshot unchanged", body)
+        selected["StockSnapshot"] = original_snapshot
+        self.post("/Companies/Select", {"key": "blank-company"}, "/Companies")
+        self.assertEqual(self.exported_stock(), [])
+        self.post("/Products/Create", {"Sku": self.sku, "Name": "Same SKU in another company", "UnitOfMeasure": "each", "IsActive": "true"})
+        # A valid signed snapshot from one company must not match an identical SKU in another.
+        _, body, token = self.stock_csv(self.write_stock_csv(rows))
+        self.assertIsNone(token); self.assertIn("StockSnapshot is invalid", body)
+        self.assertIsNone(self.stock(other))
+
+    def test_csv_preview_leading_zero_sku_opening_zero_and_replay(self):
+        sku = "004" + str(uuid.uuid4().int)[:10]
+        self.post("/Products/Create", {"Sku": sku, "Name": "Leading zero stock", "UnitOfMeasure": "box", "IsActive": "true"})
+        other = runner.rows("Products", f'"Sku"=\'{sku}\'')[0]["Id"]
+        status, body, token = self.stock_csv(f'Sku,UnitOfMeasure,CountedQuantity,ReorderPoint,LeadTimeDays,Reason\n{self.sku.lower()},each,12,3,7,Opening\n{sku},box,0,2,14,Opening\n')
+        self.assertEqual(status, 200); self.assertIsNotNone(token, body[:700])
+        self.assertIn(sku, body)
+        self.assertIsNone(self.stock()); self.assertIsNone(self.stock(other))
+        _, body, url = self.confirm_csv(token)
+        self.assertTrue(url.endswith("/Inventory"), body[:700])
+        self.assertEqual((self.stock()["OnHand"], self.stock()["ReorderPoint"], self.stock()["LeadTimeDays"]), (12, 3, 7))
+        self.assertEqual(self.stock(other)["OnHand"], 0)
+        _, body, _ = self.confirm_csv(token)
+        self.assertIn("already saved", body)
+        self.assertEqual(len(runner.rows("StockMovements", f'"ProductId"={self.product_id}')), 1)
+
+    def test_csv_recount_reason_settings_preservation_and_existing_holds(self):
+        self.configure(10)
+        order = self.order(6)
+        _, body, token = self.stock_csv(f'Sku,UnitOfMeasure,CountedQuantity\n{self.sku},each,3\n')
+        self.assertIsNone(token); self.assertIn("needs a Reason", body)
+        _, _, token = self.stock_csv(f'Sku,UnitOfMeasure,CountedQuantity,Reason\n{self.sku},each,3,"Stocktake, damaged stock"\n')
+        self.assertIsNotNone(token); self.confirm_csv(token)
+        self.assertEqual((self.stock()["OnHand"], self.stock()["LeadTimeDays"]), (3, 2))
+        self.assertEqual(self.holds(order)[0]["Quantity"], 6)
+        self.assertEqual(runner.rows("StockMovements", f'"ProductId"={self.product_id}')[-1]["Reason"], "Stocktake, damaged stock")
+        _, _, token = self.stock_csv(f'Sku,UnitOfMeasure,CountedQuantity,ReorderPoint\n{self.sku},EACH,,5\n')
+        self.confirm_csv(token)
+        self.assertEqual((self.stock()["OnHand"], self.stock()["ReorderPoint"], self.stock()["LeadTimeDays"]), (3, 5, 2))
+
+    def test_csv_rejects_invalid_headers_values_duplicates_unknown_skus_and_units(self):
+        header = 'Sku,UnitOfMeasure,CountedQuantity\n'
+        cases = [
+            ('Wrong,Headers\na,b\n', "Missing required"),
+            ('Sku,Sku,UnitOfMeasure,CountedQuantity\nx,x,each,1\n', "unique"),
+            (header + f'{self.sku},each,-1\n', "whole number"),
+            (header + f'{self.sku},each,1.5\n', "whole number"),
+            (header + f'{self.sku},each,1000000000001\n', "whole number"),
+            (header + f'{self.sku},each,2\n{self.sku.lower()},each,3\n', "duplicate SKU"),
+            (header + f'{self.sku},each,2\nNO-SUCH-SKU,each,3\n', "not found"),
+            (header + f'{self.sku},box,2\n', "cannot be converted"),
+            (header + f'{self.sku},each,2,extra\n', "could not be read"),
+            (header, "at least one"),
+            (header + f'{self.sku},each,\n', "count or at least one"),
+            (header.encode() + f'{self.sku},each,'.encode() + b'\xff\n', "could not be read"),
+        ]
+        for content, expected in cases:
+            with self.subTest(expected=expected, content=repr(content)[:100]):
+                status, body, token = self.stock_csv(content)
+                self.assertEqual(status, 200); self.assertIsNone(token); self.assertIn(expected, body)
+                self.assertIsNone(self.stock())
+
+    def test_csv_file_type_empty_file_and_row_limit(self):
+        for content, filename, expected in [
+            (b'', 'empty.csv', 'nonempty CSV'),
+            ('Sku,UnitOfMeasure,CountedQuantity\n', 'stock.xlsx', 'nonempty CSV'),
+            ('Sku,UnitOfMeasure,CountedQuantity\n' + ''.join(f'LIMIT-{i},each,1\n' for i in range(1001)), 'stock.csv', 'Maximum 1000'),
+        ]:
+            with self.subTest(filename=filename, expected=expected):
+                status, body, token = self.stock_csv(content, filename)
+                self.assertEqual(status, 200); self.assertIsNone(token); self.assertIn(expected, body)
+                self.assertIsNone(self.stock())
+
+    def test_csv_stale_snapshot_tamper_and_company_change_save_nothing(self):
+        other, _, _ = self.bulk_pair()
+        other_sku = runner.rows("Products", f'"Id"={other}')[0]["Sku"]
+        _, _, token = self.stock_csv(f'Sku,UnitOfMeasure,CountedQuantity\n{self.sku},each,10\n{other_sku},each,20\n')
+        self.assertIsNotNone(token)
+        self.configure(4)
+        _, body, _ = self.confirm_csv(token)
+        self.assertIn("changed after the preview", body)
+        self.assertEqual(self.stock()["OnHand"], 4); self.assertIsNone(self.stock(other))
+        _, body, _ = self.confirm_csv(token[:10] + "!" + token[11:])
+        self.assertIn("invalid, expired", body)
+        self.post("/Companies/Select", {"key": "blank-company"}, "/Companies")
+        _, body, _ = self.confirm_csv(token)
+        self.assertIn("belongs to another company", body)
+        _, body, uploaded = self.stock_csv(f'Sku,UnitOfMeasure,CountedQuantity\n{self.sku},each,4\n')
+        self.assertIsNone(uploaded); self.assertIn("not found", body)
+        self.assertIsNone(self.stock(other))
+
+    def test_csv_database_failure_rolls_back_entire_batch_and_template_matches_page(self):
+        _, page, _ = self.request("/Inventory/ImportCsv")
+        _, template, _ = self.request("/Inventory/StockCsvTemplate")
+        self.assertTrue(template.startswith('\ufeffSku,UnitOfMeasure,CountedQuantity'))
+        self.assertIn(template.lstrip('\ufeff').replace('\r\n', '\n').strip(), html.unescape(page).replace('\r\n', '\n'))
+        _, _, token = self.stock_csv(f'Sku,UnitOfMeasure,CountedQuantity\n{self.sku},each,10\n')
+        runner.sql('''CREATE FUNCTION csv_stock_fail() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Injected CSV stock failure'; END $$;
+            CREATE TRIGGER csv_stock_fail BEFORE INSERT ON "StockMovements" FOR EACH ROW EXECUTE FUNCTION csv_stock_fail();''')
+        try:
+            _, body, _ = self.confirm_csv(token)
+            self.assertIn("No partial changes were made", body)
+            self.assertIsNone(self.stock())
+        finally: runner.sql('DROP TRIGGER csv_stock_fail ON "StockMovements"; DROP FUNCTION csv_stock_fail();')
+        self.assertEqual(self.request("/Inventory/ConfirmStockImport", {"token": token})[0], 400)
+
+    def test_bulk_opening_zero_and_positive_counts_replay_without_double_adjustment(self):
+        other, fields, indexes = self.bulk_pair()
+        fields[indexes[self.product_id] + ".CountedQuantity"] = 0
+        fields[indexes[other] + ".CountedQuantity"] = 23
+        _, body, url = self.post("/Inventory/BulkCount", fields)
+        self.assertTrue(url.endswith("/Inventory"), body[:700])
+        self.assertEqual((self.stock()["OnHand"], self.stock(other)["OnHand"]), (0, 23))
+        _, body, _ = self.post("/Inventory/BulkCount", fields)
+        self.assertIn("changed. Reload", body)
+        self.assertEqual(self.stock(other)["OnHand"], 23)
+        self.assertEqual(len(runner.rows("StockMovements", f'"ProductId"={other}')), 1)
+        _, body, _ = self.request("/Inventory/BulkCount?untrackedOnly=true&q=" + self.sku)
+        self.assertNotIn(f'data-product-id="{other}"', body)
+
+    def test_bulk_invalid_row_and_late_database_failure_save_nothing(self):
+        other, fields, indexes = self.bulk_pair()
+        fields[indexes[self.product_id] + ".CountedQuantity"] = 8
+        fields[indexes[other] + ".CountedQuantity"] = -1
+        self.post("/Inventory/BulkCount", fields)
+        self.assertIsNone(self.stock()); self.assertIsNone(self.stock(other))
+        fields[indexes[other] + ".CountedQuantity"] = 9
+        runner.sql('''CREATE FUNCTION bulk_fail() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Injected bulk failure'; END $$;
+            CREATE TRIGGER bulk_fail BEFORE INSERT ON "StockMovements" FOR EACH ROW EXECUTE FUNCTION bulk_fail();''')
+        try:
+            _, body, _ = self.post("/Inventory/BulkCount", fields)
+            self.assertIn("No partial changes were made", body)
+            self.assertIsNone(self.stock()); self.assertIsNone(self.stock(other))
+        finally: runner.sql('DROP TRIGGER bulk_fail ON "StockMovements"; DROP FUNCTION bulk_fail();')
+
+    def test_bulk_stale_row_rejects_other_rows_and_catalog_unit_change(self):
+        other, fields, indexes = self.bulk_pair()
+        fields[indexes[self.product_id] + ".CountedQuantity"] = 8
+        fields[indexes[other] + ".CountedQuantity"] = 9
+        self.configure(4)
+        _, body, _ = self.post("/Inventory/BulkCount", fields)
+        self.assertIn("changed. Reload", body)
+        self.assertEqual(self.stock()["OnHand"], 4); self.assertIsNone(self.stock(other))
+        fields, _ = self.get_form("/Inventory/BulkCount?q=" + self.sku)
+        fields[indexes[other] + ".Selected"] = "true"
+        fields[indexes[other] + ".CountedQuantity"] = 9
+        runner.sql(f'UPDATE "Products" SET "UnitOfMeasure"=\'box\' WHERE "Id"={other};')
+        _, body, _ = self.post("/Inventory/BulkCount", fields)
+        self.assertIn("changed. Reload", body)
+        self.assertIsNone(self.stock(other))
+
+    def test_bulk_recount_requires_reason_preserves_holds_and_allows_settings_only(self):
+        self.configure(10)
+        order = self.order(6)
+        other, fields, indexes = self.bulk_pair()
+        fields[indexes[self.product_id] + ".CountedQuantity"] = 3
+        fields[indexes[other] + ".CountedQuantity"] = 0
+        _, body, _ = self.post("/Inventory/BulkCount", fields)
+        self.assertIn("enter a count reason", body)
+        self.assertEqual(self.stock()["OnHand"], 10); self.assertIsNone(self.stock(other))
+        fields["Reason"] = "Verified stocktake"
+        self.post("/Inventory/BulkCount", fields)
+        self.assertEqual(self.stock()["OnHand"], 3)
+        self.assertEqual(self.holds(order)[0]["Quantity"], 6)
+        self.assertEqual(self.projection()["days"][-1]["available"], -3)
+        movement = runner.rows("StockMovements", f'"ProductId"={self.product_id}')[-1]
+        self.assertEqual((movement["Quantity"], movement["Reason"]), (-7, "Verified stocktake"))
+        fields, _ = self.get_form("/Inventory/BulkCount?q=" + self.sku)
+        fields[indexes[self.product_id] + ".Selected"] = "true"
+        fields[indexes[self.product_id] + ".CountedQuantity"] = ""
+        fields[indexes[self.product_id] + ".ReorderPoint"] = 5
+        fields[indexes[self.product_id] + ".LeadTimeDays"] = 12
+        self.post("/Inventory/BulkCount", fields)
+        self.assertEqual((self.stock()["OnHand"], self.stock()["ReorderPoint"], self.stock()["LeadTimeDays"]), (3, 5, 12))
+
+    def test_bulk_company_scope_csrf_and_duplicate_product_guard(self):
+        other, fields, indexes = self.bulk_pair()
+        fields[indexes[self.product_id] + ".CountedQuantity"] = 8
+        fields[indexes[other] + ".CountedQuantity"] = 9
+        self.assertEqual(self.request("/Inventory/BulkCount", {})[0], 400)
+        duplicate = dict(fields)
+        duplicate[indexes[other] + ".ProductId"] = self.product_id
+        _, body, _ = self.post("/Inventory/BulkCount", duplicate)
+        self.assertIn("Each product can appear only once", body)
+        self.assertIsNone(self.stock())
+        self.post("/Companies/Select", {"key": "blank-company"}, "/Companies")
+        fields.pop("__CompanyKey", None)
+        _, body, _ = self.post("/Inventory/BulkCount", fields)
+        self.assertIn("product or stock changed", body)
+        self.assertIsNone(self.stock()); self.assertIsNone(self.stock(other))
 
     def test_confirm_creates_hold_without_deducting_actual(self):
         self.configure(10)

@@ -156,6 +156,16 @@
         reindexItems();
         filterProducts();
     });
+    const stockWarning = document.getElementById("stockWarningDialog");
+    if (stockWarning && typeof stockWarning.showModal === "function") {
+        function showStockWarning() {
+            if (stockWarning.open) stockWarning.close();
+            stockWarning.showModal();
+        }
+        document.getElementById("reviewStockWarning").addEventListener("click", showStockWarning);
+        document.getElementById("declineStockWarning").addEventListener("click", () => stockWarning.close());
+        showStockWarning();
+    }
     form.addEventListener("submit", event => {
         message.textContent = "";
         if (submitting) { event.preventDefault(); return; }

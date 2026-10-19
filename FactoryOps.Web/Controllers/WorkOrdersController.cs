@@ -3,6 +3,10 @@ using Microsoft.EntityFrameworkCore;
 using FactoryOps.Web.Data;
 using FactoryOps.Web.Models;
 using FactoryOps.Web.Services;
+using Microsoft.AspNetCore.DataProtection;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 
 namespace FactoryOps.Web.Controllers;
 
@@ -13,14 +17,18 @@ public class WorkOrdersController : Controller
     private readonly InventoryService _inventory;
     private readonly InventoryPlanner _planner;
     private readonly BusinessClock _clock;
+    private readonly IDataProtector _stockWarnings;
+    private readonly CompanyContext _company;
 
-    public WorkOrdersController(FactoryOpsDbContext db, ILogger<WorkOrdersController> logger, InventoryService inventory, InventoryPlanner planner, BusinessClock clock)
+    public WorkOrdersController(FactoryOpsDbContext db, ILogger<WorkOrdersController> logger, InventoryService inventory, InventoryPlanner planner, BusinessClock clock, IDataProtectionProvider protection, CompanyContext company)
     {
         _db = db;
         _logger = logger;
         _inventory = inventory;
         _planner = planner;
         _clock = clock;
+        _stockWarnings = protection.CreateProtector("FactoryOps.Orders.StockWarning.v1");
+        _company = company;
     }
 
     [HttpGet]
@@ -146,16 +154,17 @@ public class WorkOrdersController : Controller
             return item;
         }).ToList();
         _db.WorkOrders.Add(order);
+        var acceptedWarnings = new List<string>();
         try
         {
-            await _inventory.Reserve(order);
+            acceptedWarnings = await ReserveWithConsent(order, model);
             await _db.SaveChangesAsync();
             await transaction.CommitAsync();
         }
         catch (InventoryException error)
         {
             await transaction.RollbackAsync();
-            ModelState.AddModelError("", error.Message);
+            if (error is not InventoryWarningException) ModelState.AddModelError("", error.Message);
             return await FormError("New", model);
         }
         catch (DbUpdateException ex)
@@ -165,7 +174,10 @@ public class WorkOrdersController : Controller
             ModelState.AddModelError("", "The order could not be saved. Check the customer and delivery location, then try again.");
             return await FormError("New", model);
         }
-        TempData["OrderMessage"] = $"Order WO-{order.Id} confirmed. Outbound stock is held for its delivery date; actual stock is unchanged.";
+        LogStockConsent(order.Id, acceptedWarnings);
+        TempData["OrderMessage"] = acceptedWarnings.Count > 0
+            ? $"Order WO-{order.Id} confirmed with stock warnings. Demand is held; arrange stock before shipping. Actual stock is unchanged."
+            : $"Order WO-{order.Id} confirmed. Outbound stock is held for its delivery date; actual stock is unchanged.";
         return RedirectToAction(nameof(Index));
     }
 
@@ -205,17 +217,18 @@ public class WorkOrdersController : Controller
         _db.Entry(order).Property(x => x.Version).OriginalValue = model.Version;
         // Force a header UPDATE even for item-only edits, so xmin protects the entire order.
         _db.Entry(order).Property(x => x.Title).IsModified = true;
+        var acceptedWarnings = new List<string>();
         try
         {
             // One SaveChanges transaction covers the header, updates, inserts and deletes.
-            if (order.FulfillmentStatus is "Reserved" or "Unconfirmed") await _inventory.Reserve(order);
+            if (order.FulfillmentStatus is "Reserved" or "Unconfirmed") acceptedWarnings = await ReserveWithConsent(order, model);
             await _db.SaveChangesAsync();
             await transaction.CommitAsync();
         }
         catch (InventoryException error)
         {
             await transaction.RollbackAsync();
-            ModelState.AddModelError("", error.Message);
+            if (error is not InventoryWarningException) ModelState.AddModelError("", error.Message);
             return await FormError("Edit", model);
         }
         catch (DbUpdateConcurrencyException)
@@ -231,7 +244,10 @@ public class WorkOrdersController : Controller
             ModelState.AddModelError("", "No changes were saved. Check the customer and delivery location, then try again.");
             return await FormError("Edit", model);
         }
-        TempData["OrderMessage"] = $"Order WO-{order.Id} updated.";
+        LogStockConsent(order.Id, acceptedWarnings);
+        TempData["OrderMessage"] = acceptedWarnings.Count > 0
+            ? $"Order WO-{order.Id} updated with stock warnings. Demand is held; arrange stock before shipping."
+            : $"Order WO-{order.Id} updated.";
         return RedirectToAction(nameof(Index));
     }
 
@@ -363,6 +379,50 @@ public class WorkOrdersController : Controller
     {
         await LoadChoices(model);
         return View(view, model);
+    }
+
+    private sealed record StockWarningConsent(string Fingerprint, DateTimeOffset ExpiresAt);
+
+    private async Task<List<string>> ReserveWithConsent(WorkOrder order, WorkOrderForm model)
+    {
+        try { return await _inventory.Reserve(order); }
+        catch (InventoryWarningException warning)
+        {
+            // Bind consent to the exact order details and warnings currently displayed.
+            // Rechecking and reserving share the same company transaction lock.
+            var details = JsonSerializer.Serialize(new
+            {
+                Company = _company.Key, order.Id, model.Version, model.CreationToken, model.CustomerId,
+                model.ConstructionSiteId, model.DeliveryType, order.DueDate, model.DeliveryInstructions,
+                Items = order.Items.Where(x => _db.Entry(x).State != EntityState.Deleted)
+                    .OrderBy(x => x.ProductId).ThenBy(x => x.Quantity)
+                    .Select(x => new { x.ProductId, x.Quantity, x.UnitOfMeasureSnapshot }),
+                warning.Warnings
+            });
+            var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(details)));
+            StockWarningConsent? consent = null;
+            try
+            {
+                if (!string.IsNullOrEmpty(model.StockWarningToken))
+                    consent = JsonSerializer.Deserialize<StockWarningConsent>(_stockWarnings.Unprotect(model.StockWarningToken));
+            }
+            catch (Exception error) when (error is CryptographicException or JsonException or FormatException) { }
+            if (model.AcceptStockWarning && consent?.Fingerprint == fingerprint && consent.ExpiresAt > DateTimeOffset.UtcNow)
+                return await _inventory.Reserve(order, acceptStockWarnings: true);
+
+            model.AcceptStockWarning = false;
+            model.StockWarningToken = _stockWarnings.Protect(JsonSerializer.Serialize(new StockWarningConsent(fingerprint, DateTimeOffset.UtcNow.AddMinutes(15))));
+            ModelState.Remove(nameof(model.AcceptStockWarning));
+            ModelState.Remove(nameof(model.StockWarningToken));
+            ViewData["StockWarnings"] = warning.Warnings;
+            throw;
+        }
+    }
+
+    private void LogStockConsent(int orderId, List<string> warnings)
+    {
+        if (warnings.Count > 0)
+            _logger.LogWarning("Stock warnings explicitly accepted for order {OrderId} in company {CompanyKey}: {Warnings}", orderId, _company.Key, string.Join(" ", warnings));
     }
 
     private static void ApplyItem(WorkOrderItem item, WorkOrderItemForm input)

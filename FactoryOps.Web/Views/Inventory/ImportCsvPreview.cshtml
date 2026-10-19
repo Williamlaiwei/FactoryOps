@@ -1,0 +1,22 @@
+@model StockImportPreview
+@{ ViewData["Title"] = "Review Stock Import"; }
+<div class="mt-4">
+    <h2>Review Stock Import</h2>
+    <p>@Model.Rows.Count product(s) validated. <strong>Nothing has been saved yet.</strong> This preview expires in 15 minutes.</p>
+    <div class="alert alert-warning">Physical counts replace on-hand balances. Existing order holds will remain reserved; lower counts may create shortage warnings.</div>
+    <div class="table-responsive"><table class="table align-middle">
+        <thead><tr><th>CSV Row</th><th>Product / Unit</th><th>Current On Hand</th><th>New On Hand</th><th>Adjustment</th><th>Reorder Point</th><th>Lead Time (Days)</th><th>Reason</th></tr></thead>
+        <tbody>@foreach (var row in Model.Rows)
+        {
+            var next = row.CountedQuantity ?? row.PreviousOnHand;
+            var delta = row.CountedQuantity.HasValue ? row.CountedQuantity.Value - (row.PreviousOnHand ?? 0) : 0;
+            <tr data-product-id="@row.ProductId"><td>@row.RowNumber</td><td><strong>@row.Sku</strong><div>@row.Name</div><span class="text-muted">@row.UnitOfMeasure</span></td><td>@(row.PreviousOnHand?.ToString() ?? "Unknown")</td><td>@next</td><td>@delta.ToString("+0;-0;0")</td><td>@row.ResolvedReorderPoint</td><td>@row.ResolvedLeadTimeDays</td><td>@(string.IsNullOrWhiteSpace(row.Reason) ? (row.PreviousOnHand.HasValue ? "-" : "Opening physical count (bulk)") : row.Reason)</td></tr>
+        }</tbody>
+    </table></div>
+    <form asp-action="ConfirmStockImport" method="post" id="stockImportConfirmation">
+        <input type="hidden" name="token" value="@Model.Token" />
+        <button type="submit" class="btn btn-primary" id="confirmStockImport">Confirm Stock Import</button>
+        <a asp-action="ImportCsv" class="btn btn-outline-secondary">Cancel / Choose Another File</a>
+        <p class="form-text">If any product or stock balance changes before confirmation, the entire import is rejected. Upload again to review the latest balances.</p>
+    </form>
+</div>

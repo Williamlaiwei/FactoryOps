@@ -72,3 +72,16 @@ body {
   opacity: 0;
   cursor: pointer;
 }
+
+.stock-warning-dialog {
+  width: min(44rem, calc(100% - 2rem));
+  max-height: 85vh;
+  overflow: auto;
+  padding: 1.5rem;
+  border: 2px solid #d39e00;
+  border-radius: .5rem;
+  background: #fff9e6;
+  color: #212529;
+}
+
+.stock-warning-dialog::backdrop { background: rgb(0 0 0 / 45%); }

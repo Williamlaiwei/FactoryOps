@@ -12,7 +12,7 @@
     <div class="alert alert-light border">
         Enter a physical count to start tracking each product. Expected receipts are plans; only received stock is on hand.
         Forecasts include all outstanding order dates. Overdue receipts are excluded until received or rescheduled.
-        Same-day receipts are assumed to arrive before deliveries. Confirming an order creates an outbound hold and requires sufficient dated availability. Shipping requires actual received stock.
+        Same-day receipts are assumed to arrive before deliveries. Confirming an order records outbound demand. Unknown or insufficient stock requires explicit warning acceptance before saving; shipping requires actual received stock.
     </div>
     <form method="get" class="d-flex gap-2 mb-3"><label class="visually-hidden" for="inventorySearch">Search product</label><input id="inventorySearch" name="q" value="@ViewData["Query"]" type="search" class="form-control" placeholder="Search SKU or product name..." /><button class="btn btn-outline-primary">Search</button></form>
     <div class="table-responsive"><table class="table align-middle">

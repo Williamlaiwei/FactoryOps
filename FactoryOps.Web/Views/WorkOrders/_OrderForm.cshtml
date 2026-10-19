@@ -2,6 +2,7 @@
 @using FactoryOps.Web.Models
 @{
     var editing = ViewData["IsEditing"] is true;
+    var stockWarnings = ViewData["StockWarnings"] as IReadOnlyList<string> ?? Array.Empty<string>();
 }
 <div class="container mt-4">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
@@ -17,12 +18,13 @@
               data-search-url="@Url.Action("Search", "Customers")" data-sites-url="@Url.Action("Sites", "Customers")">
             <input asp-for="Version" type="hidden" />
             <input asp-for="CreationToken" type="hidden" />
+            <input asp-for="StockWarningToken" type="hidden" />
             <div asp-validation-summary="All" class="text-danger" role="alert"></div>
             @if (ViewData["FulfillmentStatus"] is "Shipped" or "Historical")
             { <div class="alert alert-info">This order is shipped or historically accounted. Product lines and the delivery date are fixed; update customer or delivery notes as needed.</div> }
             else
             {
-                <div class="alert alert-light border">Saving a new or active order confirms outbound holds for its requested delivery date. Availability includes actual stock plus incoming holds due by that date, less existing outbound holds. Insufficient dated availability blocks confirmation. Actual stock is deducted only by Ship Order.</div>
+                <div class="alert alert-light border">Saving a new or active order records outbound holds for its requested delivery date. Availability includes actual stock plus incoming holds due by that date, less existing outbound holds. Unknown or insufficient stock requires your explicit agreement to continue. Actual stock is deducted only by Ship Order, which requires sufficient physical stock.</div>
                 @if (editing)
                 { <div class="form-check mb-3"><input asp-for="ConfirmCurrentUnits" class="form-check-input" /><label asp-for="ConfirmCurrentUnits" class="form-check-label">I confirm these quantities use the current catalog units (for correcting old unit snapshots).</label></div> }
             }
@@ -119,6 +121,22 @@
             {
                 <p class="text-muted small">An existing past delivery date may be kept. Any new delivery date must be today or later.</p>
                 <a asp-action="Edit" asp-route-id="@ViewContext.RouteData.Values["id"]" class="btn btn-link">Reload saved order</a>
+            }
+            @if (stockWarnings.Count > 0)
+            {
+                <div class="alert alert-warning" id="stockWarningNotice">This order needs stock review. Nothing has been saved yet.
+                    <button type="button" class="btn btn-sm btn-outline-dark ms-2" id="reviewStockWarning">Review Stock Warning</button>
+                </div>
+                <dialog id="stockWarningDialog" open class="stock-warning-dialog" aria-labelledby="stockWarningTitle">
+                    <h3 id="stockWarningTitle">Stock Warning</h3>
+                    <ul>@foreach (var warning in stockWarnings) { <li>@warning</li> }</ul>
+                    <p>You can save this order anyway. Its full demand will remain held and shortage warnings will appear in Inventory and Work Orders. Arrange stock before shipping.</p>
+                    <p><strong>Continue and save this order?</strong></p>
+                    <div class="d-flex flex-wrap gap-2">
+                        <button type="button" class="btn btn-outline-secondary" id="declineStockWarning" autofocus>Go Back</button>
+                        <button type="submit" class="btn btn-warning" id="acceptStockWarning" name="AcceptStockWarning" value="true">Continue Anyway</button>
+                    </div>
+                </dialog>
             }
             <div class="d-flex justify-content-end mt-3">
                 <button id="saveOrderButton" type="submit" class="btn btn-primary">@(editing ? "Save Changes" : "Create Order")</button>

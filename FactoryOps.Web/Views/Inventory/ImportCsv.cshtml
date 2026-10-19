@@ -1,0 +1,35 @@
+@model StockImportForm
+@{ ViewData["Title"] = "Import Stock CSV"; }
+<div class="mt-4">
+    <h2>Import Stock CSV</h2>
+    <partial name="_Navigation" />
+    <p>Upload up to 1,000 stock rows in a UTF-8 CSV file (maximum 5 MB). Review a preview before confirming. All rows save together.</p>
+    <p><strong>Download, edit, upload:</strong> use <strong>Download Current Stock CSV</strong> above, change counts or settings, add a Reason for changed counts, then upload the whole file here.
+        The download includes all tracked products for the active company, including zero counts and inactive products. Products without an opening count are excluded; use the example or Bulk Stock Count to set them up.</p>
+    <div class="alert alert-light border"><strong>Counts replace physical on-hand balances; they are not quantities to add.</strong>
+        Include stock reserved for orders in your physical count. Existing order holds remain reserved.
+        For arriving goods, use <a asp-action="Replenishments">Replenishments</a> and Receive.</div>
+    <a asp-action="StockCsvTemplate" class="btn btn-outline-primary mb-3">Download Stock CSV Example</a>
+    <p class="small text-muted">Replace both fictional example rows with products already in the active company's catalog.
+        Keep leading zeros in SKU values such as <code>04412</code>: treat Sku as text in Excel and export as CSV UTF-8.
+        This import updates inventory; it does not create catalog products.</p>
+    <details open class="mb-3"><summary>View Stock CSV Example</summary><pre class="bg-light border rounded p-3 mt-2">@FactoryOps.Web.Services.CsvImportExamples.Stock</pre></details>
+    <div class="table-responsive"><table class="table table-sm">
+        <thead><tr><th>Column</th><th>How to fill it</th></tr></thead>
+        <tbody>
+            <tr><td>Sku</td><td>Required. Existing catalog SKU, including leading zeros. Each SKU can appear only once.</td></tr>
+            <tr><td>UnitOfMeasure</td><td>Required. Must match the catalog unit, such as each or box. No automatic unit conversion.</td></tr>
+            <tr><td>CountedQuantity</td><td>Column required. Whole physical count, including zero. Blank keeps an existing count; a new stock record requires a count.</td></tr>
+            <tr><td>ReorderPoint</td><td>Optional. Whole safety stock quantity. Blank keeps the current value, or defaults to zero for new stock.</td></tr>
+            <tr><td>LeadTimeDays</td><td>Optional. Calendar days from 0 to 3650. Blank keeps the current value, or defaults to zero for new stock.</td></tr>
+            <tr><td>Reason</td><td>Required when changing an existing physical count. Optional for opening counts or settings-only updates. Maximum 500 characters.</td></tr>
+            <tr><td>StockSnapshot</td><td>Included in downloaded stock files. Keep this column and its values unchanged. If stock or product details change after download, re-download before importing.</td></tr>
+        </tbody>
+    </table></div>
+    <form asp-action="ImportCsv" method="post" enctype="multipart/form-data" class="card card-body">
+        <div asp-validation-summary="All" class="text-danger" role="alert"></div>
+        <label asp-for="File" class="form-label">Stock CSV</label><input asp-for="File" type="file" accept=".csv,text/csv" class="form-control" required />
+        <p class="form-text">At least one count or stock setting is required per row. Choose the file again after correcting errors.</p>
+        <div><button type="submit" class="btn btn-primary">Preview Stock Import</button></div>
+    </form>
+</div>
