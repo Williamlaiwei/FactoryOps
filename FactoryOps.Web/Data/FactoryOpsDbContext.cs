@@ -30,6 +30,8 @@ public class FactoryOpsDbContext : DbContext
     public DbSet<Replenishment> Replenishments => Set<Replenishment>();
     public DbSet<StockMovement> StockMovements => Set<StockMovement>();
     public DbSet<StockReservation> StockReservations => Set<StockReservation>();
+    public DbSet<Supplier> Suppliers => Set<Supplier>();
+    public DbSet<ProductSupplier> ProductSuppliers => Set<ProductSupplier>();
     protected override void OnModelCreating(
     ModelBuilder modelBuilder)
     {
@@ -47,7 +49,7 @@ public class FactoryOpsDbContext : DbContext
             nameof(Product.FlushingMethod), nameof(Product.CeramicBody), nameof(Product.Color), nameof(Product.DisplayMode),
             nameof(Product.NetWeight), nameof(Product.GrossWeight) })
             modelBuilder.Entity<Product>().Property<string>(property).HasDefaultValue("");
-        foreach (var type in new[] { typeof(Product), typeof(Customer), typeof(ConstructionSite), typeof(WorkOrder), typeof(InventoryStock), typeof(Replenishment), typeof(StockMovement), typeof(StockReservation) })
+        foreach (var type in new[] { typeof(Product), typeof(Customer), typeof(ConstructionSite), typeof(WorkOrder), typeof(InventoryStock), typeof(Replenishment), typeof(StockMovement), typeof(StockReservation), typeof(Supplier), typeof(ProductSupplier) })
         {
             modelBuilder.Entity(type).Property(nameof(ICompanyRecord.CompanyKey)).HasMaxLength(64).HasDefaultValue("fti-demo");
             modelBuilder.Entity(type).HasOne(typeof(CompanyProfile)).WithMany().HasForeignKey(nameof(ICompanyRecord.CompanyKey)).OnDelete(DeleteBehavior.Restrict);
@@ -65,6 +67,17 @@ public class FactoryOpsDbContext : DbContext
         modelBuilder.Entity<Replenishment>().HasQueryFilter(x => x.CompanyKey == _company.Key);
         modelBuilder.Entity<StockMovement>().HasQueryFilter(x => x.CompanyKey == _company.Key);
         modelBuilder.Entity<StockReservation>().HasQueryFilter(x => x.CompanyKey == _company.Key);
+        modelBuilder.Entity<Supplier>().HasQueryFilter(x => x.CompanyKey == _company.Key);
+        modelBuilder.Entity<Supplier>().Property(x => x.Version).IsRowVersion();
+        modelBuilder.Entity<Supplier>().HasIndex(x => new { x.CompanyKey, x.NormalizedName }).IsUnique();
+        modelBuilder.Entity<Supplier>().HasIndex(x => new { x.CompanyKey, x.CreationToken }).IsUnique();
+        modelBuilder.Entity<ProductSupplier>().HasQueryFilter(x => x.CompanyKey == _company.Key);
+        modelBuilder.Entity<ProductSupplier>().HasKey(x => new { x.ProductId, x.SupplierId });
+        modelBuilder.Entity<ProductSupplier>().Property(x => x.Version).IsRowVersion();
+        modelBuilder.Entity<ProductSupplier>().HasOne(x => x.Product).WithMany().HasForeignKey(x => x.ProductId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<ProductSupplier>().HasOne(x => x.Supplier).WithMany().HasForeignKey(x => x.SupplierId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<ProductSupplier>().HasIndex(x => x.ProductId).IsUnique().HasFilter("\"IsDefault\"").HasDatabaseName("IX_ProductSuppliers_Default");
+        modelBuilder.Entity<Replenishment>().HasOne<Supplier>().WithMany().HasForeignKey(x => x.SupplierId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<StockReservation>().HasKey(x => new { x.WorkOrderId, x.ProductId });
         modelBuilder.Entity<StockReservation>().HasOne(x => x.WorkOrder).WithMany().HasForeignKey(x => x.WorkOrderId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<StockReservation>().HasOne(x => x.Product).WithMany().HasForeignKey(x => x.ProductId).OnDelete(DeleteBehavior.Restrict);

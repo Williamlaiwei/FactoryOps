@@ -1,0 +1,35 @@
+@model ProductSuppliersPage
+@{ ViewData["Title"] = "Product Suppliers"; }
+<div class="mt-4">
+    <h2>Product Suppliers</h2><p><strong>@Model.Product.Sku - @Model.Product.Name</strong></p>
+    <p class="text-muted">Link multiple suppliers and choose one default. Default changes apply to new replenishments; existing schedules keep their supplier.</p>
+    <partial name="~/Views/Inventory/_Navigation.cshtml" />
+    @if (TempData["SupplierMessage"] is string message) { <div class="alert alert-info" role="status">@message</div> }
+    <div class="d-flex flex-wrap gap-2 mb-3"><a asp-action="Create" asp-route-productId="@Model.Product.Id" class="btn btn-primary">Add New Supplier for Product</a><a asp-controller="Inventory" asp-action="Schedule" asp-route-productId="@Model.Product.Id" class="btn btn-outline-success">Schedule Replenishment</a><a asp-action="Index" class="btn btn-outline-secondary">All Suppliers</a></div>
+    @if (Model.Available.Any())
+    {
+        <form method="post" asp-action="Assign" class="card card-body mb-3">
+            <input name="productId" value="@Model.Product.Id" type="hidden" />
+            <label for="assignSupplier" class="form-label">Link an existing supplier</label>
+            <select name="supplierId" id="assignSupplier" class="form-select" required><option value="">Select supplier...</option>@foreach (var supplier in Model.Available) { <option value="@supplier.Id">@supplier.Name</option> }</select>
+            <div class="form-check mt-2"><input name="makeDefault" value="true" type="checkbox" id="makeSupplierDefault" class="form-check-input" checked="@(!Model.Links.Any(x => x.IsDefault))" /><label for="makeSupplierDefault" class="form-check-label">Use as the default supplier</label></div>
+            <div class="mt-2"><button class="btn btn-outline-primary">Link Supplier</button></div>
+        </form>
+    }
+    <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Supplier</th><th>Contact</th><th>Default / Status</th><th>Actions</th></tr></thead><tbody>
+    @foreach (var link in Model.Links)
+    {
+        <tr data-product-supplier="@link.SupplierId" data-default="@link.IsDefault.ToString().ToLowerInvariant()">
+            <td>@link.Supplier.Name</td><td>@link.Supplier.ContactName<div>@link.Supplier.Email</div><div>@link.Supplier.Phone</div></td>
+            <td>@if (link.IsDefault) { <span class="badge bg-primary">Default</span> } <span>@(link.Supplier.IsActive ? "Active" : "Inactive")</span></td>
+            <td><div class="d-flex flex-wrap gap-2">
+                <a asp-action="Edit" asp-route-id="@link.SupplierId" asp-route-productId="@Model.Product.Id" class="btn btn-sm btn-outline-primary">Edit Supplier</a>
+                @if (!link.IsDefault && link.Supplier.IsActive)
+                { <form method="post" asp-action="SetDefault"><input name="productId" value="@Model.Product.Id" type="hidden" /><input name="supplierId" value="@link.SupplierId" type="hidden" /><input name="version" value="@link.Version" type="hidden" /><button class="btn btn-sm btn-outline-success">Make Default</button></form> }
+                <form method="post" asp-action="Remove"><input name="productId" value="@Model.Product.Id" type="hidden" /><input name="supplierId" value="@link.SupplierId" type="hidden" /><input name="version" value="@link.Version" type="hidden" /><button class="btn btn-sm btn-outline-danger">Unlink</button></form>
+            </div></td>
+        </tr>
+    }
+    </tbody></table></div>
+    @if (!Model.Links.Any()) { <p>No suppliers linked to this product yet.</p> }
+</div>

@@ -6,10 +6,24 @@
 <div class="mt-4" id="stockDashboard" data-url="@Url.Action("Projection")" data-company="@Company.Key">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><div><h2>Inventory Dashboard</h2><p class="text-muted mb-0">Actual stock, incoming holds and confirmed order commitments by delivery date.</p></div><a asp-controller="Inventory" asp-action="Index" class="btn btn-outline-primary">Manage Inventory</a></div>
     @if (Model.RiskProducts > 0 || Model.UnconfirmedOrders > 0)
-    { <div class="alert alert-warning">@Model.RiskProducts product(s) have projected shortages; @Model.UnconfirmedOrders order(s) need confirmation. <a asp-controller="WorkOrders" asp-action="Index">Review orders and holds</a>.</div> }
+    { <div class="alert alert-warning">@Model.RiskProducts product(s) need stock attention; @Model.UnconfirmedOrders order(s) need confirmation. <a asp-controller="WorkOrders" asp-action="Index">Review orders and holds</a>.</div> }
     <div class="card card-body">
         <form id="projectionControls" method="get" class="row g-3 align-items-end mb-3">
-            <div class="col-md-8"><label for="stockProductSelect" class="form-label">Product</label><select id="stockProductSelect" name="productId" class="form-select">@foreach (var product in Model.Products) { <option value="@product.Id" selected="@(product.Id == Model.SelectedProductId)">@product.Sku - @product.Name (@product.UnitOfMeasure)</option> }</select></div>
+            <div class="col-md-8">
+                <label for="stockProductSelect" id="stockProductLabel" class="form-label">Product</label>
+                <div class="stock-product-picker">
+                    <select id="stockProductSelect" name="productId" class="form-select">
+                    @foreach (var item in Model.ProductPlans)
+                    {
+                        var product = item.Product; var label = $"{product.Sku} - {product.Name} ({product.UnitOfMeasure})";
+                        <option value="@product.Id" data-label="@label" data-risk="@item.HasDashboardRisk.ToString().ToLowerInvariant()" data-status="@item.DashboardAlert" selected="@(product.Id == Model.SelectedProductId)">@label@(item.DashboardAlert != "Sufficient" ? " — " + item.DashboardAlert : "")</option>
+                    }
+                    </select>
+                    <button type="button" id="stockProductButton" class="form-select stock-product-button" role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-controls="stockProductOptions" aria-labelledby="stockProductLabel stockProductValue" hidden><span id="stockProductValue"></span></button>
+                    <div id="stockProductOptions" class="stock-product-options" role="listbox" aria-labelledby="stockProductLabel" hidden></div>
+                </div>
+                <p class="small text-muted mt-1 mb-0">Red products need attention: shortages, reorder levels, overdue receipts or reliance on incoming stock.</p>
+            </div>
             <div class="col-md-3"><label for="projectionMonths" class="form-label">Forecast Range</label><select id="projectionMonths" name="months" class="form-select"><option value="1" selected="@(Model.Months == 1)">Next 1 Month</option><option value="3" selected="@(Model.Months == 3)">Next 3 Months</option></select></div>
             <div class="col-md-1"><button class="btn btn-outline-primary w-100" type="submit" aria-label="Refresh forecast">View</button></div>
         </form>
@@ -31,4 +45,4 @@
     @if (!Model.Products.Any()) { <p class="mt-3">Add catalog products to begin tracking inventory.</p> }
     <script type="application/json" id="initialProjection">@Html.Raw(JsonSerializer.Serialize(Model.Projection, new JsonSerializerOptions(JsonSerializerDefaults.Web)))</script>
 </div>
-@section Scripts { <script src="~/js/inventory-dashboard.js" asp-append-version="true"></script> }
+@section Scripts { <script src="~/js/stock-product-picker.js" asp-append-version="true"></script><script src="~/js/inventory-dashboard.js" asp-append-version="true"></script> }

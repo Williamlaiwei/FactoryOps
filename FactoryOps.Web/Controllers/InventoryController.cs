@@ -177,9 +177,11 @@ public partial class InventoryController(FactoryOpsDbContext db, InventoryPlanne
     [HttpGet]
     public async Task<IActionResult> Schedule(int? productId)
     {
-        await LoadProducts();
-        return View("ReplenishmentForm", new ReplenishmentForm
-        { ProductId = productId ?? 0, ExpectedDate = clock.Today, CreationToken = Guid.NewGuid() });
+        var model = new ReplenishmentForm { ProductId = productId ?? 0, ExpectedDate = clock.Today, CreationToken = Guid.NewGuid() };
+        model.SupplierId = await db.ProductSuppliers.Where(x => x.ProductId == model.ProductId && x.IsDefault && x.Supplier.IsActive)
+            .Select(x => (int?)x.SupplierId).SingleOrDefaultAsync();
+        await LoadReplenishmentForm(model);
+        return View("ReplenishmentForm", model);
     }
 
     [HttpPost, ValidateAntiForgeryToken]
@@ -189,11 +191,11 @@ public partial class InventoryController(FactoryOpsDbContext db, InventoryPlanne
         if (model.CreationToken.HasValue && await db.Replenishments.AnyAsync(x => x.CreationToken == model.CreationToken))
         { TempData["InventoryMessage"] = "This replenishment was already scheduled. No duplicate was added."; return RedirectToAction(nameof(Replenishments)); }
         await ValidateReplenishment(model);
-        if (!ModelState.IsValid) { await LoadProducts(); return View("ReplenishmentForm", model); }
+        if (!ModelState.IsValid) { await LoadReplenishmentForm(model); return View("ReplenishmentForm", model); }
         var item = new Replenishment { CreationToken = model.CreationToken!.Value };
         Apply(item, model);
         db.Replenishments.Add(item);
-        if (!await Save()) { await LoadProducts(); return View("ReplenishmentForm", model); }
+        if (!await Save()) { await LoadReplenishmentForm(model); return View("ReplenishmentForm", model); }
         await transaction.CommitAsync();
         TempData["InventoryMessage"] = "Incoming hold scheduled. It can cover orders from its expected arrival date. Actual stock increases only on receipt.";
         return RedirectToAction(nameof(Replenishments));
@@ -205,13 +207,15 @@ public partial class InventoryController(FactoryOpsDbContext db, InventoryPlanne
         var item = await db.Replenishments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id);
         if (item == null) return NotFound();
         if (item.Status != "Planned") return RedirectToAction(nameof(Replenishments));
-        await LoadProducts(item.ProductId); ViewData["ReplenishmentId"] = id;
-        return View("ReplenishmentForm", new ReplenishmentForm
+        ViewData["ReplenishmentId"] = id;
+        var model = new ReplenishmentForm
         {
             ProductId = item.ProductId, Quantity = item.Quantity, ExpectedDate = item.ExpectedDate,
-            Supplier = item.Supplier, Reference = item.Reference, Notes = item.Notes,
+            SupplierId = item.SupplierId, Supplier = item.Supplier, Reference = item.Reference, Notes = item.Notes,
             Version = item.Version, CreationToken = item.CreationToken
-        });
+        };
+        await LoadReplenishmentForm(model, item.ProductId);
+        return View("ReplenishmentForm", model);
     }
 
     [HttpPost, ValidateAntiForgeryToken]
@@ -224,11 +228,11 @@ public partial class InventoryController(FactoryOpsDbContext db, InventoryPlanne
         if (item.Status != "Planned" || item.Version != model.Version || item.CreationToken != model.CreationToken)
             ModelState.AddModelError("", "This replenishment changed. Reload the schedule before editing it.");
         await ValidateReplenishment(model, item);
-        if (!ModelState.IsValid) { await LoadProducts(item.ProductId); return View("ReplenishmentForm", model); }
+        if (!ModelState.IsValid) { await LoadReplenishmentForm(model, item.ProductId); return View("ReplenishmentForm", model); }
         Apply(item, model);
         // Force an update even when all form values are unchanged, so replayed forms become stale.
         db.Entry(item).Property(x => x.Notes).IsModified = true;
-        if (!await Save()) { await LoadProducts(item.ProductId); return View("ReplenishmentForm", model); }
+        if (!await Save()) { await LoadReplenishmentForm(model, item.ProductId); return View("ReplenishmentForm", model); }
         await transaction.CommitAsync();
         TempData["InventoryMessage"] = "Incoming hold updated. Existing orders retain their holds; review Stock Schedule for any commitments now at risk.";
         return RedirectToAction(nameof(Replenishments));
@@ -276,6 +280,30 @@ public partial class InventoryController(FactoryOpsDbContext db, InventoryPlanne
         if (!model.ExpectedDate.HasValue || model.ExpectedDate.Value == default ||
             (model.ExpectedDate.Value.Date < clock.Today && model.ExpectedDate.Value.Date != original?.ExpectedDate.Date))
             ModelState.AddModelError(nameof(model.ExpectedDate), "Choose today or a future expected arrival date.");
+        if (model.SupplierId.HasValue)
+        {
+            var supplier = await db.Suppliers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == model.SupplierId);
+            var unchanged = original?.SupplierId == model.SupplierId && original?.ProductId == model.ProductId;
+            if (supplier == null || (!unchanged && (!supplier.IsActive || !await db.ProductSuppliers.AnyAsync(x =>
+                    x.ProductId == model.ProductId && x.SupplierId == model.SupplierId))))
+                ModelState.AddModelError(nameof(model.SupplierId), "Select an active supplier linked to this product, or enter a supplier manually.");
+            else model.Supplier = unchanged ? original!.Supplier : supplier.Name;
+        }
+    }
+
+    private async Task LoadReplenishmentForm(ReplenishmentForm model, int? originalProduct = null)
+    {
+        await LoadProducts(originalProduct);
+        var options = await db.ProductSuppliers.AsNoTracking().Where(x => x.ProductId == model.ProductId && x.Supplier.IsActive)
+            .OrderByDescending(x => x.IsDefault).ThenBy(x => x.Supplier.Name)
+            .Select(x => new Microsoft.AspNetCore.Mvc.Rendering.SelectListItem
+            { Value = x.SupplierId.ToString(), Text = x.Supplier.Name + (x.IsDefault ? " (Default)" : "") }).ToListAsync();
+        if (model.SupplierId.HasValue && options.All(x => x.Value != model.SupplierId.Value.ToString()))
+        {
+            var supplier = await db.Suppliers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == model.SupplierId);
+            if (supplier != null) options.Add(new() { Value = supplier.Id.ToString(), Text = model.Supplier + " (Recorded supplier)" });
+        }
+        ViewData["SupplierOptions"] = options;
     }
 
     private async Task LoadProducts(int? selected = null) => ViewData["Products"] = await db.Products.AsNoTracking()
@@ -287,6 +315,7 @@ public partial class InventoryController(FactoryOpsDbContext db, InventoryPlanne
     private static void Apply(Replenishment item, ReplenishmentForm model)
     {
         item.ProductId = model.ProductId; item.Quantity = model.Quantity; item.ExpectedDate = model.ExpectedDate!.Value.Date;
+        item.SupplierId = model.SupplierId;
         item.Supplier = model.Supplier?.Trim() ?? ""; item.Reference = model.Reference?.Trim() ?? ""; item.Notes = model.Notes?.Trim() ?? "";
     }
 

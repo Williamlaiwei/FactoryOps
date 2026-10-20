@@ -1,0 +1,130 @@
+name: factoryops-cloud
+
+x-runtime: &runtime
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  proxy:
+    <<: *runtime
+    image: caddy:2-alpine
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?Set your demo domain in .env.cloud}
+      DEMO_TLS_NAME: ${DEMO_TLS_NAME:-}
+      DEMO_AUTH_USER: ${DEMO_AUTH_USER:-}
+      DEMO_AUTH_HASH: ${DEMO_AUTH_HASH:-}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ${CADDY_CONFIG_FILE:-./deploy/Caddyfile}:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      default:
+        ipv4_address: 172.30.88.10
+    depends_on:
+      web:
+        condition: service_healthy
+
+  web:
+    <<: *runtime
+    image: factoryops-web:${RELEASE_TAG:-demo}
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_HTTP_PORTS: 8080
+      ASPNETCORE_HTTPS_PORT: 443
+      BusinessTimeZone: Australia/Sydney
+      ReverseProxy__Address: 172.30.88.10
+      ReverseProxy__RequireHttps: ${REQUIRE_HTTPS:-true}
+      DataProtection__KeysPath: /var/factoryops/keys
+      KnowledgeService__BaseUrl: http://ai:8000
+      KnowledgeService__ApiKey: ${FACTORYOPS_AI_KEY:?Set a service key}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ConnectionStrings__FactoryOps: "Host=db;Port=5432;Database=factoryops;Username=factoryops;Password=${POSTGRES_PASSWORD:?Set a database password}"
+    volumes:
+      - protection_keys:/var/factoryops/keys
+    healthcheck:
+      test: ["CMD", "dotnet", "FactoryOps.Web.dll", "--healthcheck"]
+      interval: 15s
+      timeout: 8s
+      retries: 8
+      start_period: 30s
+    depends_on:
+      db:
+        condition: service_healthy
+
+  ai:
+    <<: *runtime
+    image: factoryops-ai:${RELEASE_TAG:-demo}
+    platform: linux/amd64
+    build:
+      context: ./ai
+    environment:
+      FACTORYOPS_AI_KEY: ${FACTORYOPS_AI_KEY:?Set a service key}
+      KNOWLEDGE_DB_HOST: knowledge-db
+      KNOWLEDGE_DB_NAME: knowledge
+      KNOWLEDGE_DB_USER: knowledge
+      KNOWLEDGE_DB_PASSWORD: ${KNOWLEDGE_POSTGRES_PASSWORD:?Set a knowledge database password}
+      CATALOG_API_URL: http://web:8080/internal/catalog
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 15s
+      timeout: 8s
+      retries: 12
+      start_period: 30s
+    depends_on:
+      knowledge-db:
+        condition: service_healthy
+
+  db:
+    <<: *runtime
+    image: postgres:16
+    environment:
+      POSTGRES_DB: factoryops
+      POSTGRES_USER: factoryops
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set a database password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U factoryops -d factoryops"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  knowledge-db:
+    <<: *runtime
+    image: pgvector/pgvector:0.8.7-pg16
+    environment:
+      POSTGRES_DB: knowledge
+      POSTGRES_USER: knowledge
+      POSTGRES_PASSWORD: ${KNOWLEDGE_POSTGRES_PASSWORD:?Set a knowledge database password}
+    volumes:
+      - knowledge_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U knowledge -d knowledge"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.30.88.0/24
+
+volumes:
+  postgres_data:
+  knowledge_data:
+  protection_keys:
+  caddy_data:
+  caddy_config:

@@ -63,7 +63,11 @@ public class InventoryPlanner(FactoryOpsDbContext db, BusinessClock clock)
                 {
                     withoutReceipts -= item.Outgoing;
                     if (balance < 0) Warn(item.SourceId, $"{product.Product.Sku}: short {-balance} {product.Product.UnitOfMeasure} by {item.Date:yyyy-MM-dd}.");
-                    else if (withoutReceipts < 0) Warn(item.SourceId, $"{product.Product.Sku}: depends on planned receipts arriving on time.");
+                    else if (withoutReceipts < 0)
+                    {
+                        product.DependsOnReceipts = true;
+                        Warn(item.SourceId, $"{product.Product.Sku}: depends on planned receipts arriving on time.");
+                    }
                 }
             }
             if (reorderDate.HasValue) product.ReorderBy = reorderDate.Value.AddDays(-stock.LeadTimeDays);
@@ -83,7 +87,8 @@ public class InventoryPlanner(FactoryOpsDbContext db, BusinessClock clock)
             CompanyKey = companyKey, ProductId = product.Product.Id, Sku = product.Product.Sku, Name = product.Product.Name,
             Unit = product.Product.UnitOfMeasure, StartDate = plan.Today.ToString("yyyy-MM-dd"), EndDate = end.ToString("yyyy-MM-dd"),
             Months = months, OnHand = product.Stock?.OnHand, OutboundHeld = product.OpenDemand,
-            IncomingHeld = product.ExpectedInbound, OverdueReceipts = product.OverdueReceipts, NeedsReview = product.UncertainDemand > 0
+            IncomingHeld = product.ExpectedInbound, OverdueReceipts = product.OverdueReceipts, NeedsReview = product.UncertainDemand > 0,
+            StockRisk = product.HasDashboardRisk, StockAlert = product.DashboardAlert
         };
         if (product.Stock == null) return result;
         long incoming = 0, outgoing = 0;

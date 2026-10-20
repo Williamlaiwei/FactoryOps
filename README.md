@@ -2,6 +2,13 @@
 
 ASP.NET Core MVC (.NET 8), Entity Framework Core and PostgreSQL 16 order management.
 
+For a project overview, implemented features and resume-ready descriptions, see
+[RESUME.md](RESUME.md). [Open the live demo](https://45.79.238.119).
+
+Cloud demo packaging, both SQL database transfers and restore instructions:
+[deploy/README.md](deploy/README.md). Current hosting cost comparison:
+[deploy/HOSTING.md](deploy/HOSTING.md).
+
 Create a local `.env` file containing `POSTGRES_PASSWORD=<your local password>`, then run:
 
 ```powershell

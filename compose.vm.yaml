@@ -1,0 +1,17 @@
+# Optional limits when sharing the VM with existing workloads.
+services:
+  web:
+    cpus: 0.5
+    mem_limit: 384m
+  ai:
+    cpus: 0.5
+    mem_limit: 768m
+  db:
+    cpus: 0.25
+    mem_limit: 384m
+  knowledge-db:
+    cpus: 0.25
+    mem_limit: 384m
+  proxy:
+    cpus: 0.25
+    mem_limit: 128m

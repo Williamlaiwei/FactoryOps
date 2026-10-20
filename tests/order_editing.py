@@ -368,7 +368,10 @@ def main():
                 ENV["FACTORYOPS_TEST_BASE_URL"] = BASE
                 command(["node", "tests/knowledge.browser.cjs"])
             return 0
-        if "--inventory" in sys.argv:
+        if "--suppliers" in sys.argv:
+            from suppliers import SupplierTests
+            suite = unittest.defaultTestLoader.loadTestsFromTestCase(SupplierTests)
+        elif "--inventory" in sys.argv:
             from inventory import InventoryTests
             suite = unittest.defaultTestLoader.loadTestsFromTestCase(InventoryTests)
         elif "--settings" in sys.argv:
@@ -385,11 +388,13 @@ def main():
         result = unittest.TextTestRunner(verbosity=2).run(suite)
         if result.wasSuccessful() and "--browser" in sys.argv:
             ENV["FACTORYOPS_TEST_BASE_URL"] = BASE
-            script = ("tests/inventory.browser.cjs" if "--inventory" in sys.argv else
+            script = ("tests/inventory.browser.cjs" if "--inventory" in sys.argv or "--suppliers" in sys.argv else
                       "tests/settings.browser.cjs" if "--settings" in sys.argv else
                       "tests/company_profiles.browser.cjs" if "--companies" in sys.argv else
                       "tests/product_catalog.browser.cjs" if "--catalog" in sys.argv else "tests/order_editing.browser.cjs")
             command(["node", script])
+            if "--suppliers" in sys.argv:
+                command(["node", "tests/suppliers.browser.cjs"])
         return 0 if result.wasSuccessful() else 1
     finally:
         if knowledge_started:

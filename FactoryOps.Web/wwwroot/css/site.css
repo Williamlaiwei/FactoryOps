@@ -85,3 +85,12 @@ body {
 }
 
 .stock-warning-dialog::backdrop { background: rgb(0 0 0 / 45%); }
+
+.stock-product-picker { position: relative; min-width: 0; }
+.stock-product-button { text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.stock-product-options { position: absolute; top: 100%; left: 0; right: 0; z-index: 1050; max-height: 22rem; overflow-y: auto; border: 1px solid #adb5bd; border-radius: .375rem; background: #fff; box-shadow: 0 .5rem 1rem rgb(0 0 0 / 15%); }
+.stock-product-option { display: block; width: 100%; border: 0; padding: .6rem .75rem; text-align: left; background: #fff; color: #212529; overflow-wrap: anywhere; }
+.stock-product-option[aria-selected="true"] { box-shadow: inset 4px 0 #1765d1; }
+.stock-product-risk, #stockProductSelect option[data-risk="true"] { color: #b02a37; font-weight: 600; }
+.stock-product-option.stock-product-risk { background: #fff3f3; }
+.stock-product-option:hover, .stock-product-option.stock-product-focused { outline: 2px solid #1765d1; outline-offset: -2px; background: #e9f1fc; }

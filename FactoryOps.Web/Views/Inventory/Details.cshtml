@@ -4,6 +4,7 @@
     <h2>@p.Product.Sku - @p.Product.Name</h2>
     <p class="text-muted">Stock unit: @p.Product.UnitOfMeasure</p>
     <partial name="_Navigation" />
+    <p><a asp-controller="Suppliers" asp-action="Product" asp-route-id="@p.Product.Id">Manage suppliers / default supplier for this product</a></p>
     @if (p.Stock == null)
     { <div class="alert alert-warning">Stock is not tracked. Availability is unknown until you enter a physical count.</div> }
     else

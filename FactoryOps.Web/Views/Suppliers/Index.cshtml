@@ -1,0 +1,20 @@
+@model List<Supplier>
+@{ ViewData["Title"] = "Suppliers"; var products = ViewData["Products"] as List<Product> ?? new(); }
+<div class="mt-4">
+    <h2>Suppliers</h2>
+    <p class="text-muted">Maintain suppliers for this company. Each product can have several suppliers and one default.</p>
+    <partial name="~/Views/Inventory/_Navigation.cshtml" />
+    @if (TempData["SupplierMessage"] is string message) { <div class="alert alert-info" role="status">@message</div> }
+    <a asp-action="Create" class="btn btn-primary mb-3">Add Supplier</a>
+    <form method="get" asp-action="Product" class="card card-body mb-3">
+        <label for="supplierProduct" class="form-label">Manage suppliers for a product</label>
+        <div class="d-flex flex-wrap gap-2"><select id="supplierProduct" name="id" class="form-select" required><option value="">Select product...</option>@foreach (var product in products) { <option value="@product.Id">@product.Sku - @product.Name</option> }</select><button class="btn btn-outline-primary">Manage Product Suppliers</button></div>
+    </form>
+    <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Supplier</th><th>Contact</th><th>Status</th><th>Actions</th></tr></thead><tbody>
+    @foreach (var supplier in Model)
+    {
+        <tr data-supplier-id="@supplier.Id"><td><strong>@supplier.Name</strong><div class="small text-muted">@supplier.Notes</div></td><td>@supplier.ContactName<div>@supplier.Email</div><div>@supplier.Phone</div></td><td>@(supplier.IsActive ? "Active" : "Inactive")</td><td><a asp-action="Edit" asp-route-id="@supplier.Id" class="btn btn-sm btn-outline-primary">Edit Supplier</a></td></tr>
+    }
+    </tbody></table></div>
+    @if (!Model.Any()) { <p>No suppliers yet. Add one, then link it to the products it supplies.</p> }
+</div>

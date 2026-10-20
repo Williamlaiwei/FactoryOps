@@ -1,0 +1,20 @@
+{
+    default_sni {$DEMO_TLS_NAME}
+}
+
+{$SITE_ADDRESS} {
+    tls {
+        issuer acme {
+            dir https://acme-v02.api.letsencrypt.org/directory
+            profile shortlived
+            disable_tlsalpn_challenge
+        }
+    }
+    encode zstd gzip
+    request_body {
+        max_size 25MB
+    }
+    reverse_proxy web:8080 {
+        header_up -Authorization
+    }
+}

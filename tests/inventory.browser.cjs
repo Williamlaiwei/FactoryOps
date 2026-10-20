@@ -138,17 +138,17 @@ const { chromium } = require('../artifacts/browser-tools/node_modules/playwright
         assert.match(await page.locator('#projectionTooltip').innerText(), new RegExp(date(1)));
         await page.locator('#projectionMonths').selectOption('3');
         await page.waitForFunction(() => document.querySelectorAll('#projectionRows tr').length > 85);
-        await page.locator('#stockProductSelect').selectOption(b);
+        await page.locator('#stockProductSelect').selectOption(b, { force: true });
         await page.waitForFunction(() => document.getElementById('projectionOnHand').textContent.startsWith('20 each'));
         assert.equal(await page.locator('#projectionRows tr').nth(10).locator('td').nth(3).textContent(), '20');
-        await page.locator('#stockProductSelect').selectOption(a);
+        await page.locator('#stockProductSelect').selectOption(a, { force: true });
         await page.waitForFunction(() => document.getElementById('projectionOnHand').textContent.startsWith('3 each'));
         await page.route('**/Dashboard/Projection?**', route => route.abort());
-        await page.locator('#stockProductSelect').selectOption(b);
+        await page.locator('#stockProductSelect').selectOption(b, { force: true });
         await page.locator('#projectionError').waitFor({ state: 'visible' });
         assert.equal(await page.locator('polyline[data-series]').count(), 0);
         await page.unroute('**/Dashboard/Projection?**');
-        await page.locator('#stockProductSelect').selectOption(a);
+        await page.locator('#stockProductSelect').selectOption(a, { force: true });
         await page.waitForFunction(() => document.getElementById('projectionOnHand').textContent.startsWith('3 each'));
         await page.screenshot({ path: 'artifacts/stock-holds-dashboard.png', fullPage: true });
 

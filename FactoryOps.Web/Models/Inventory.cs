@@ -23,6 +23,7 @@ public class Replenishment : ICompanyRecord
     public long Quantity { get; set; }
     public DateTime ExpectedDate { get; set; }
     [MaxLength(200)] public string Supplier { get; set; } = "";
+    public int? SupplierId { get; set; }
     [MaxLength(100)] public string Reference { get; set; } = "";
     [MaxLength(1000)] public string Notes { get; set; } = "";
     [MaxLength(16)] public string Status { get; set; } = "Planned";

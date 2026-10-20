@@ -1,0 +1,25 @@
+@model SupplierForm
+@{ var editing = ViewData["SupplierId"] is int; ViewData["Title"] = editing ? "Edit Supplier" : "Add Supplier"; }
+<div class="mt-4">
+    <h2>@ViewData["Title"]</h2>
+    <p class="text-muted">Supplier details belong to the active company. Existing replenishments keep the supplier name recorded when they were scheduled.</p>
+    <form asp-action="@(editing ? "Edit" : "Create")" asp-route-id="@(editing ? ViewData["SupplierId"] : null)" method="post" class="card card-body">
+        <input asp-for="Version" type="hidden" /><input asp-for="CreationToken" type="hidden" /><input asp-for="ProductId" type="hidden" />
+        <div asp-validation-summary="All" class="text-danger" role="alert"></div>
+        <div class="row g-3">
+            <div class="col-md-6"><label asp-for="Name" class="form-label">Supplier Name *</label><input asp-for="Name" maxlength="200" class="form-control" required /></div>
+            <div class="col-md-6"><label asp-for="ContactName" class="form-label">Contact Name</label><input asp-for="ContactName" maxlength="150" class="form-control" /></div>
+            <div class="col-md-6"><label asp-for="Email" class="form-label">Email</label><input asp-for="Email" type="email" maxlength="254" class="form-control" /></div>
+            <div class="col-md-6"><label asp-for="Phone" class="form-label">Phone</label><input asp-for="Phone" maxlength="50" class="form-control" /></div>
+            <div class="col-12"><label asp-for="Notes" class="form-label">Notes</label><textarea asp-for="Notes" maxlength="1000" rows="3" class="form-control"></textarea></div>
+        </div>
+        <div class="form-check mt-3"><input asp-for="IsActive" class="form-check-input" /><label asp-for="IsActive" class="form-check-label">Active supplier</label></div>
+        @if (!editing && Model.ProductId.HasValue)
+        { <div class="form-check mt-2"><input asp-for="MakeDefault" class="form-check-input" /><label asp-for="MakeDefault" class="form-check-label">Use as the default supplier for this product</label></div> }
+        @if (editing) { <p class="text-muted mt-3">Deactivating a supplier removes it from product defaults and new replenishment choices. Existing replenishments remain available.</p> }
+        <div class="d-flex gap-2 mt-3"><button class="btn btn-primary">@(editing ? "Save Supplier" : "Create Supplier")</button>
+            @if (Model.ProductId.HasValue) { <a asp-action="Product" asp-route-id="@Model.ProductId" class="btn btn-outline-secondary">Back to Product Suppliers</a> }
+            else { <a asp-action="Index" class="btn btn-outline-secondary">Back to Suppliers</a> }
+        </div>
+    </form>
+</div>

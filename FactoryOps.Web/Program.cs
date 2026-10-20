@@ -1,8 +1,27 @@
 using Microsoft.EntityFrameworkCore;
 using FactoryOps.Web.Data;
 using FactoryOps.Web.Services;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
+using System.Net;
+
+// Lightweight Docker health probe without curl or extra runtime packages.
+if (args.Contains("--healthcheck"))
+{
+    using var probe = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+    try { return (await probe.GetAsync("http://localhost:8080/healthz")).IsSuccessStatusCode ? 0 : 1; }
+    catch { return 1; }
+}
 
 var builder = WebApplication.CreateBuilder(args);
+var keysPath = builder.Configuration["DataProtection:KeysPath"];
+if (!string.IsNullOrWhiteSpace(keysPath))
+    builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(keysPath)).SetApplicationName("FactoryOps");
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    if (IPAddress.TryParse(builder.Configuration["ReverseProxy:Address"], out var proxy)) options.KnownProxies.Add(proxy);
+});
 
 // Add services to the container.
 builder.Services.AddControllersWithViews(options => options.Filters.Add<CompanyFormFilter>());
@@ -22,6 +41,7 @@ builder.Services.AddDbContext<FactoryOpsDbContext>(
         builder.Configuration.GetConnectionString("FactoryOps")));
 
 var app = builder.Build();
+app.UseForwardedHeaders();
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
@@ -31,12 +51,16 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-app.UseHttpsRedirection();
+// Container probes and the private knowledge callback use internal HTTP.
+app.UseWhen(context => builder.Configuration.GetValue("ReverseProxy:RequireHttps", true) &&
+    !context.Request.Path.StartsWithSegments("/internal/catalog") && context.Request.Path != "/healthz",
+    branch => branch.UseHttpsRedirection());
 app.UseStaticFiles();
 
 app.UseRouting();
 app.Use(async (context, next) =>
 {
+    if (context.Request.Path == "/healthz") { await next(); return; }
     var company = context.RequestServices.GetRequiredService<CompanyContext>();
     var db = context.RequestServices.GetRequiredService<FactoryOpsDbContext>();
     var key = context.Request.Cookies["FactoryOps.Company"] ?? "fti-demo";
@@ -57,6 +81,8 @@ app.Use(async (context, next) =>
 });
 
 app.UseAuthorization();
+app.MapGet("/healthz", async (FactoryOpsDbContext db) =>
+    await db.Database.CanConnectAsync() ? Results.Ok(new { status = "ready" }) : Results.StatusCode(503));
 
 app.MapControllerRoute(
     name: "default",
@@ -75,3 +101,4 @@ using (var scope = app.Services.CreateScope())
     transaction.Commit();
 }
 app.Run();
+return 0;

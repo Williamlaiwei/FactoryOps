@@ -3,6 +3,7 @@ namespace FactoryOps.Web.Models;
 public class InventoryDashboard
 {
     public List<Product> Products { get; set; } = new();
+    public List<InventoryProductPlan> ProductPlans { get; set; } = new();
     public int SelectedProductId { get; set; }
     public int Months { get; set; } = 1;
     public StockProjection? Projection { get; set; }
@@ -25,6 +26,8 @@ public class StockProjection
     public long IncomingHeld { get; set; }
     public int OverdueReceipts { get; set; }
     public bool NeedsReview { get; set; }
+    public bool StockRisk { get; set; }
+    public string StockAlert { get; set; } = "";
     public List<StockProjectionDay> Days { get; set; } = new();
 }
 

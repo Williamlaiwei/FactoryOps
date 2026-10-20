@@ -24,6 +24,12 @@
     }
     function x(index) { return box.left + index / Math.max(1, days.length - 1) * (box.right - box.left); }
     function draw(data) {
+        const option = Array.from(product.options).find(item => item.value === String(data?.productId));
+        if (option && data.stockAlert) {
+            option.dataset.risk = String(data.stockRisk); option.dataset.status = data.stockAlert;
+            option.textContent = option.dataset.label + (data.stockAlert !== "Sufficient" ? " — " + data.stockAlert : "");
+            product.dispatchEvent(new Event("stockriskupdated"));
+        }
         currentData = data; days = data?.days || []; rows.replaceChildren();
         const small = svg.clientWidth < 600, width = small ? 480 : 1000, font = small ? 16 : 12;
         svg.setAttribute("viewBox", `0 0 ${width} 340`); box.right = width - 25;

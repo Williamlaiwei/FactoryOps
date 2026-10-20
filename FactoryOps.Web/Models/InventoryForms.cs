@@ -25,6 +25,7 @@ public class ReplenishmentForm : IValidatableObject
     [Range(1, StockSettingsForm.MaximumQuantity)] public long Quantity { get; set; } = 1;
     [Required(ErrorMessage = "Enter an expected arrival date.")] public DateTime? ExpectedDate { get; set; }
     [StringLength(200)] public string? Supplier { get; set; }
+    [Range(1, int.MaxValue)] public int? SupplierId { get; set; }
     [StringLength(100)] public string? Reference { get; set; }
     [StringLength(1000)] public string? Notes { get; set; }
     [Required] public Guid? CreationToken { get; set; }
@@ -59,6 +60,10 @@ public class InventoryProductPlan
     public long MinimumBalance { get; set; }
     public DateTime? FirstShortageDate { get; set; }
     public DateTime? ReorderBy { get; set; }
+    public bool DependsOnReceipts { get; set; }
+    public bool HasDashboardRisk => FirstShortageDate.HasValue || UncertainDemand > 0 || DependsOnReceipts ||
+        (Stock != null && (Stock.OnHand == 0 || MinimumBalance <= Stock.ReorderPoint || OverdueReceipts > 0));
+    public string DashboardAlert => Alert == "Sufficient" && DependsOnReceipts ? "Depends on incoming stock" : Alert;
     public long ReorderQuantity => Stock == null ? 0 : Math.Max(0, Stock.ReorderPoint - MinimumBalance + 1);
     public long OpenDemand => Events.Sum(x => x.Outgoing);
     public long ExpectedInbound => Events.Where(x => x.CountsInProjection).Sum(x => x.Incoming);

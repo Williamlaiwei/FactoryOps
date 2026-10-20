@@ -61,9 +61,18 @@
                                     <div class="fw-semibold">@customerName</div>
                                     <div class="text-muted small">@siteName</div>
                                 </td>
-                                <td>
-                                    <div>@(items.Count > 0 ? $"{items.Count} product line(s)" : "1 legacy product line")</div>
-                                    <div class="text-muted small">@itemSummary</div>
+                                <td class="order-items">
+                                    @if (items.Count > 0)
+                                    {
+                                        @foreach (var item in items)
+                                        {
+                                            <div>@item.ProductType &times; @item.Quantity @item.UnitOfMeasureSnapshot</div>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <div>@order.ProductType &times; @order.Quantity</div>
+                                    }
                                 </td>
                                 <td>@order.DueDate.ToString("yyyy-MM-dd")</td>
                                 <td>

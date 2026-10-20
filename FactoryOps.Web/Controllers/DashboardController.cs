@@ -19,9 +19,9 @@ public class DashboardController(FactoryOpsDbContext db, InventoryPlanner planne
         if (productId.HasValue && product == null) return NotFound();
         return View(new InventoryDashboard
         {
-            Products = plan.Products.Select(x => x.Product).ToList(), SelectedProductId = product?.Product.Id ?? 0,
+            Products = plan.Products.Select(x => x.Product).ToList(), ProductPlans = plan.Products, SelectedProductId = product?.Product.Id ?? 0,
             Months = months, Projection = product == null ? null : InventoryPlanner.Project(plan, product, months, company.Key),
-            RiskProducts = plan.Products.Count(x => x.FirstShortageDate.HasValue),
+            RiskProducts = plan.Products.Count(x => x.HasDashboardRisk),
             UnconfirmedOrders = await db.WorkOrders.CountAsync(x => x.FulfillmentStatus == "Unconfirmed")
         });
     }
